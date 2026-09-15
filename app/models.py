@@ -27,17 +27,21 @@ class SupplierResearch(BaseModel):
     price_cop_per_unit: float | None = None
     estimated_total_delivered_cop: float | None = None
     price_status: EvidenceStatus = "por_confirmar"
+    price_sources: list[Source] = Field(default_factory=list)
 
     credit_terms: str = "Por confirmar"
     credit_days: int | None = None
     credit_status: EvidenceStatus = "por_confirmar"
+    credit_sources: list[Source] = Field(default_factory=list)
 
     delivery_time: str = "Por confirmar"
     delivery_days: float | None = None
     delivery_status: EvidenceStatus = "por_confirmar"
+    delivery_sources: list[Source] = Field(default_factory=list)
 
     certifications: list[str] = Field(default_factory=list)
     certifications_status: EvidenceStatus = "por_confirmar"
+    certifications_sources: list[Source] = Field(default_factory=list)
 
     capacity: str = "Por confirmar"
     capacity_status: EvidenceStatus = "por_confirmar"

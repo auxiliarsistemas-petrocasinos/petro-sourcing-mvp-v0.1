@@ -47,8 +47,17 @@ Reglas:
 - `credit_days` solo si aparece explícitamente; si no, null.
 - `delivery_days` puede ser numérico si está confirmado o estimado de forma clara; si no, null.
 - No inventes URLs. Usa exclusivamente las URL entregadas en la sección FUENTES DISPONIBLES.
-- Vincula a cada proveedor solo las fuentes que realmente lo sustentan.
-- Mantén "Por confirmar" cuando falte información.
+- `sources` contiene las fuentes que sustentan la existencia, identidad o pertinencia general del proveedor.
+- `price_sources` contiene únicamente fuentes que sustentan directamente el precio.
+- `credit_sources` contiene únicamente fuentes que sustentan directamente el plazo o condiciones de crédito.
+- `delivery_sources` contiene únicamente fuentes que sustentan directamente el plazo de entrega.
+- `certifications_sources` contiene únicamente fuentes que sustentan directamente las certificaciones indicadas.
+- Todas esas fuentes deben provenir exclusivamente de FUENTES DISPONIBLES.
+- Toda URL incluida en `price_sources`, `credit_sources`, `delivery_sources` o `certifications_sources` también debe estar incluida en `sources` del mismo proveedor.
+- Nunca uses una fuente asociada a otro proveedor para respaldar datos de este proveedor.
+- Una fuente general del proveedor NO demuestra por sí sola precio, crédito, entrega ni certificaciones.
+- No agregues una URL a una lista de evidencia específica si esa fuente no sustenta realmente ese dato.
+- Mantén "Por confirmar" cuando falte información o evidencia específica.
 """
 
 
@@ -84,46 +93,102 @@ def _enforce_source_evidence(
 
     validated = result.model_copy(deep=True)
 
-    for supplier in validated.suppliers:
-        supplier.sources = [
+    def valid_global_sources(field_sources):
+        return [
             source
-            for source in supplier.sources
+            for source in field_sources
             if source.url in allowed_urls
         ]
 
-        if supplier.sources:
+    for supplier in validated.suppliers:
+        supplier.sources = valid_global_sources(supplier.sources)
+
+        supplier_urls = {
+            source.url
+            for source in supplier.sources
+        }
+
+        def valid_supplier_sources(field_sources, supplier_urls):
+            return [
+                source
+                for source in field_sources
+                if source.url in allowed_urls
+                and source.url in supplier_urls
+            ]
+
+        supplier.price_sources = valid_supplier_sources(
+            supplier.price_sources,
+            supplier_urls,
+        )
+        supplier.credit_sources = valid_supplier_sources(
+            supplier.credit_sources,
+            supplier_urls,
+        )
+        supplier.delivery_sources = valid_supplier_sources(
+            supplier.delivery_sources,
+            supplier_urls,
+        )
+        supplier.certifications_sources = valid_supplier_sources(
+            supplier.certifications_sources,
+            supplier_urls,
+        )
+
+        if not supplier.sources:
+            supplier.confidence = "baja"
+            supplier.product_match_status = "por_confirmar"
+
+            supplier.price_sources = []
+            supplier.credit_sources = []
+            supplier.delivery_sources = []
+            supplier.certifications_sources = []
+
+            supplier.price_text = "Por confirmar"
+            supplier.price_cop_per_unit = None
+            supplier.estimated_total_delivered_cop = None
+            supplier.price_status = "por_confirmar"
+
+            supplier.credit_terms = "Por confirmar"
+            supplier.credit_days = None
+            supplier.credit_status = "por_confirmar"
+
+            supplier.delivery_time = "Por confirmar"
+            supplier.delivery_days = None
+            supplier.delivery_status = "por_confirmar"
+
+            supplier.certifications = []
+            supplier.certifications_status = "por_confirmar"
+
+            supplier.capacity = "Por confirmar"
+            supplier.capacity_status = "por_confirmar"
+
+            supplier.phone = "Por confirmar"
+            supplier.email = "Por confirmar"
+            supplier.website = "Por confirmar"
+
             continue
 
-        # Sin una fuente recuperada realmente por la búsqueda web,
-        # ningún dato del proveedor puede permanecer como confirmado.
-        supplier.confidence = "baja"
+        if not supplier.price_sources:
+            supplier.price_text = "Por confirmar"
+            supplier.price_cop_per_unit = None
+            supplier.estimated_total_delivered_cop = None
+            supplier.price_status = "por_confirmar"
 
-        supplier.product_match_status = "por_confirmar"
+        if not supplier.credit_sources:
+            supplier.credit_terms = "Por confirmar"
+            supplier.credit_days = None
+            supplier.credit_status = "por_confirmar"
 
-        supplier.price_text = "Por confirmar"
-        supplier.price_cop_per_unit = None
-        supplier.estimated_total_delivered_cop = None
-        supplier.price_status = "por_confirmar"
+        if not supplier.delivery_sources:
+            supplier.delivery_time = "Por confirmar"
+            supplier.delivery_days = None
+            supplier.delivery_status = "por_confirmar"
 
-        supplier.credit_terms = "Por confirmar"
-        supplier.credit_days = None
-        supplier.credit_status = "por_confirmar"
-
-        supplier.delivery_time = "Por confirmar"
-        supplier.delivery_days = None
-        supplier.delivery_status = "por_confirmar"
-
-        supplier.certifications = []
-        supplier.certifications_status = "por_confirmar"
-
-        supplier.capacity = "Por confirmar"
-        supplier.capacity_status = "por_confirmar"
-
-        supplier.phone = "Por confirmar"
-        supplier.email = "Por confirmar"
-        supplier.website = "Por confirmar"
+        if not supplier.certifications_sources:
+            supplier.certifications = []
+            supplier.certifications_status = "por_confirmar"
 
     return validated
+
 
 def research_purchase(query: str) -> tuple[ResearchResult, list[dict[str, str]], str]:
     api_key = os.getenv("OPENAI_API_KEY")

@@ -316,3 +316,173 @@ def test_field_source_must_belong_to_same_supplier():
     assert checked.price_sources == []
     assert checked.price_status == "por_confirmar"
     assert checked.estimated_total_delivered_cop is None
+
+
+def test_general_supplier_source_does_not_confirm_capacity_or_contacts():
+    general = Source(
+        title="Proveedor oficial",
+        url="https://real.example/proveedor",
+    )
+
+    supplier = SupplierResearch(
+        supplier_name="Proveedor con datos no sustentados",
+        product_match="Producto solicitado",
+        product_match_status="confirmado",
+        capacity="10.000 unidades/mes",
+        capacity_status="confirmado",
+        phone="+57 300 123 4567",
+        email="ventas@proveedor.example",
+        website="https://proveedor.example",
+        evidence_summary="Proveedor real, datos adicionales sin evidencia específica.",
+        confidence="alta",
+        sources=[general],
+    )
+
+    result = ResearchResult(
+        interpreted_request="Comprar producto",
+        product="Producto",
+        quantity="100 unidades",
+        destination="Bogotá",
+        suppliers=[supplier],
+        recommendation_summary="Resumen",
+    )
+
+    validated = research._enforce_source_evidence(
+        result,
+        [
+            {
+                "title": "Proveedor oficial",
+                "url": "https://real.example/proveedor",
+            }
+        ],
+    )
+
+    checked = validated.suppliers[0]
+
+    assert checked.capacity == "Por confirmar"
+    assert checked.capacity_status == "por_confirmar"
+    assert checked.phone == "Por confirmar"
+    assert checked.email == "Por confirmar"
+    assert checked.website == "Por confirmar"
+
+
+def test_specific_sources_preserve_capacity_and_contacts():
+    general = Source(
+        title="Proveedor oficial",
+        url="https://real.example/proveedor",
+    )
+    capacity_source = Source(
+        title="Ficha de capacidad",
+        url="https://real.example/capacidad",
+    )
+    contact_source = Source(
+        title="Contacto oficial",
+        url="https://real.example/contacto",
+    )
+
+    supplier = SupplierResearch(
+        supplier_name="Proveedor documentado",
+        product_match="Producto solicitado",
+        product_match_status="confirmado",
+        capacity="10.000 unidades/mes",
+        capacity_status="confirmado",
+        phone="+57 300 123 4567",
+        email="ventas@proveedor.example",
+        website="https://proveedor.example",
+        evidence_summary="Capacidad y contactos documentados.",
+        confidence="alta",
+        sources=[general, capacity_source, contact_source],
+        capacity_sources=[capacity_source],
+        contact_sources=[contact_source],
+    )
+
+    result = ResearchResult(
+        interpreted_request="Comprar producto",
+        product="Producto",
+        quantity="100 unidades",
+        destination="Bogotá",
+        suppliers=[supplier],
+        recommendation_summary="Resumen",
+    )
+
+    validated = research._enforce_source_evidence(
+        result,
+        [
+            {
+                "title": "Proveedor oficial",
+                "url": "https://real.example/proveedor",
+            },
+            {
+                "title": "Ficha de capacidad",
+                "url": "https://real.example/capacidad",
+            },
+            {
+                "title": "Contacto oficial",
+                "url": "https://real.example/contacto",
+            },
+        ],
+    )
+
+    checked = validated.suppliers[0]
+
+    assert checked.capacity_sources == [capacity_source]
+    assert checked.contact_sources == [contact_source]
+    assert checked.capacity == "10.000 unidades/mes"
+    assert checked.capacity_status == "confirmado"
+    assert checked.phone == "+57 300 123 4567"
+    assert checked.email == "ventas@proveedor.example"
+    assert checked.website == "https://proveedor.example"
+
+
+def test_contact_source_from_other_supplier_is_rejected():
+    supplier_source = Source(
+        title="Proveedor A",
+        url="https://a.example/proveedor",
+    )
+    other_contact = Source(
+        title="Contacto proveedor B",
+        url="https://b.example/contacto",
+    )
+
+    supplier = SupplierResearch(
+        supplier_name="Proveedor A",
+        product_match="Producto solicitado",
+        product_match_status="confirmado",
+        phone="+57 300 999 9999",
+        email="ventas@b.example",
+        website="https://b.example",
+        evidence_summary="Contacto mal asociado.",
+        confidence="alta",
+        sources=[supplier_source],
+        contact_sources=[other_contact],
+    )
+
+    result = ResearchResult(
+        interpreted_request="Comprar producto",
+        product="Producto",
+        quantity="100 unidades",
+        destination="Bogotá",
+        suppliers=[supplier],
+        recommendation_summary="Resumen",
+    )
+
+    validated = research._enforce_source_evidence(
+        result,
+        [
+            {
+                "title": "Proveedor A",
+                "url": "https://a.example/proveedor",
+            },
+            {
+                "title": "Contacto proveedor B",
+                "url": "https://b.example/contacto",
+            },
+        ],
+    )
+
+    checked = validated.suppliers[0]
+
+    assert checked.contact_sources == []
+    assert checked.phone == "Por confirmar"
+    assert checked.email == "Por confirmar"
+    assert checked.website == "Por confirmar"

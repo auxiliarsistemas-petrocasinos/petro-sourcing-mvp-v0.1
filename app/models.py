@@ -45,10 +45,12 @@ class SupplierResearch(BaseModel):
 
     capacity: str = "Por confirmar"
     capacity_status: EvidenceStatus = "por_confirmar"
+    capacity_sources: list[Source] = Field(default_factory=list)
 
     phone: str = "Por confirmar"
     email: str = "Por confirmar"
     website: str = "Por confirmar"
+    contact_sources: list[Source] = Field(default_factory=list)
 
     evidence_summary: str
     confidence: ConfidenceLevel = "media"

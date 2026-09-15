@@ -52,8 +52,10 @@ Reglas:
 - `credit_sources` contiene únicamente fuentes que sustentan directamente el plazo o condiciones de crédito.
 - `delivery_sources` contiene únicamente fuentes que sustentan directamente el plazo de entrega.
 - `certifications_sources` contiene únicamente fuentes que sustentan directamente las certificaciones indicadas.
+- `capacity_sources` contiene únicamente fuentes que sustentan directamente la capacidad declarada del proveedor.
+- `contact_sources` contiene únicamente fuentes oficiales o confiables que sustentan teléfono, correo o sitio web del proveedor.
 - Todas esas fuentes deben provenir exclusivamente de FUENTES DISPONIBLES.
-- Toda URL incluida en `price_sources`, `credit_sources`, `delivery_sources` o `certifications_sources` también debe estar incluida en `sources` del mismo proveedor.
+- Toda URL incluida en `price_sources`, `credit_sources`, `delivery_sources`, `certifications_sources`, `capacity_sources` o `contact_sources` también debe estar incluida en `sources` del mismo proveedor.
 - Nunca uses una fuente asociada a otro proveedor para respaldar datos de este proveedor.
 - Una fuente general del proveedor NO demuestra por sí sola precio, crédito, entrega ni certificaciones.
 - No agregues una URL a una lista de evidencia específica si esa fuente no sustenta realmente ese dato.
@@ -132,6 +134,14 @@ def _enforce_source_evidence(
             supplier.certifications_sources,
             supplier_urls,
         )
+        supplier.capacity_sources = valid_supplier_sources(
+            supplier.capacity_sources,
+            supplier_urls,
+        )
+        supplier.contact_sources = valid_supplier_sources(
+            supplier.contact_sources,
+            supplier_urls,
+        )
 
         if not supplier.sources:
             supplier.confidence = "baja"
@@ -141,6 +151,8 @@ def _enforce_source_evidence(
             supplier.credit_sources = []
             supplier.delivery_sources = []
             supplier.certifications_sources = []
+            supplier.capacity_sources = []
+            supplier.contact_sources = []
 
             supplier.price_text = "Por confirmar"
             supplier.price_cop_per_unit = None
@@ -186,6 +198,15 @@ def _enforce_source_evidence(
         if not supplier.certifications_sources:
             supplier.certifications = []
             supplier.certifications_status = "por_confirmar"
+
+        if not supplier.capacity_sources:
+            supplier.capacity = "Por confirmar"
+            supplier.capacity_status = "por_confirmar"
+
+        if not supplier.contact_sources:
+            supplier.phone = "Por confirmar"
+            supplier.email = "Por confirmar"
+            supplier.website = "Por confirmar"
 
     return validated
 

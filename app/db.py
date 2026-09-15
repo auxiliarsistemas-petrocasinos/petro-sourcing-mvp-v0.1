@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from datetime import UTC, datetime
 from pathlib import Path
-from datetime import datetime, timezone
 
 DB_PATH = Path(__file__).resolve().parent.parent / "research.db"
 
@@ -28,7 +28,7 @@ def save_research(query: str, payload: dict) -> int:
         cur = conn.execute(
             "INSERT INTO research(created_at, query, result_json) VALUES (?, ?, ?)",
             (
-                datetime.now(timezone.utc).isoformat(),
+                datetime.now(UTC).isoformat(),
                 query,
                 json.dumps(payload, ensure_ascii=False),
             ),

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import Literal, Optional
-from pydantic import BaseModel, Field
+from typing import Literal
 
+from pydantic import BaseModel, Field
 
 EvidenceStatus = Literal["confirmado", "estimado", "por_confirmar"]
 ConfidenceLevel = Literal["alta", "media", "baja"]
@@ -24,16 +24,16 @@ class SupplierResearch(BaseModel):
     product_match_status: EvidenceStatus = "por_confirmar"
 
     price_text: str = "Por confirmar"
-    price_cop_per_unit: Optional[float] = None
-    estimated_total_delivered_cop: Optional[float] = None
+    price_cop_per_unit: float | None = None
+    estimated_total_delivered_cop: float | None = None
     price_status: EvidenceStatus = "por_confirmar"
 
     credit_terms: str = "Por confirmar"
-    credit_days: Optional[int] = None
+    credit_days: int | None = None
     credit_status: EvidenceStatus = "por_confirmar"
 
     delivery_time: str = "Por confirmar"
-    delivery_days: Optional[float] = None
+    delivery_days: float | None = None
     delivery_status: EvidenceStatus = "por_confirmar"
 
     certifications: list[str] = Field(default_factory=list)

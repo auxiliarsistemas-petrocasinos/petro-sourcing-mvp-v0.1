@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import os
 from typing import Any
+
 from openai import OpenAI
 
 from .models import ResearchResult
-
 
 SYSTEM_RESEARCH_PROMPT = """
 Eres un analista senior de abastecimiento para una empresa en Colombia.
@@ -98,8 +98,7 @@ def research_purchase(query: str) -> tuple[ResearchResult, list[dict[str, str]],
                 "role": "user",
                 "content": (
                     "Investiga esta necesidad de compra y produce un informe detallado, "
-                    "comparativo y sustentado:\n\n"
-                    + query
+                    "comparativo y sustentado:\n\n" + query
                 ),
             },
         ],
@@ -108,9 +107,10 @@ def research_purchase(query: str) -> tuple[ResearchResult, list[dict[str, str]],
     report = research_response.output_text
     sources = _collect_url_annotations(research_response)
 
-    sources_text = "\n".join(
-        f"- {s['title']} | {s['url']}" for s in sources
-    ) or "- No se recuperaron URL explícitas."
+    sources_text = (
+        "\n".join(f"- {s['title']} | {s['url']}" for s in sources)
+        or "- No se recuperaron URL explícitas."
+    )
 
     parse_input = f"""
 INFORME DE INVESTIGACIÓN:

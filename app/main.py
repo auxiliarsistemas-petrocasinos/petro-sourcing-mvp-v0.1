@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from pathlib import Path
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -11,13 +13,24 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
-from .db import init_db, save_research, list_research, get_research
+from .db import get_research, init_db, list_research, save_research
 from .research import research_purchase
 from .scoring import rank_suppliers
 
-
 BASE_DIR = Path(__file__).resolve().parent
-app = FastAPI(title="Agente de Abastecimiento", version="0.1.0")
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    init_db()
+    yield
+
+
+app = FastAPI(
+    title="Agente de Abastecimiento",
+    version="0.2.0",
+    lifespan=lifespan,
+)
 
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
@@ -25,11 +38,6 @@ templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
 class ResearchRequest(BaseModel):
     query: str
-
-
-@app.on_event("startup")
-def startup() -> None:
-    init_db()
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -65,12 +73,7 @@ def run_research(payload: ResearchRequest):
         research_id = save_research(query, body)
         return {"research_id": research_id, **body}
     except RuntimeError as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
-    except Exception as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error durante la investigación: {type(exc).__name__}: {exc}",
-        )
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @app.get("/api/history")

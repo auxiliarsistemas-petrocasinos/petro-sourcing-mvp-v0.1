@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .models import SupplierResearch, RankedSupplier
+from .models import RankedSupplier, SupplierResearch
 
 WEIGHTS = {
     "price": 0.35,

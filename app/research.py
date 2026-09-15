@@ -71,6 +71,60 @@ def _collect_url_annotations(response: Any) -> list[dict[str, str]]:
     return sources
 
 
+
+def _enforce_source_evidence(
+    result: ResearchResult,
+    global_sources: list[dict[str, str]],
+) -> ResearchResult:
+    allowed_urls = {
+        source["url"]
+        for source in global_sources
+        if source.get("url")
+    }
+
+    validated = result.model_copy(deep=True)
+
+    for supplier in validated.suppliers:
+        supplier.sources = [
+            source
+            for source in supplier.sources
+            if source.url in allowed_urls
+        ]
+
+        if supplier.sources:
+            continue
+
+        # Sin una fuente recuperada realmente por la búsqueda web,
+        # ningún dato del proveedor puede permanecer como confirmado.
+        supplier.confidence = "baja"
+
+        supplier.product_match_status = "por_confirmar"
+
+        supplier.price_text = "Por confirmar"
+        supplier.price_cop_per_unit = None
+        supplier.estimated_total_delivered_cop = None
+        supplier.price_status = "por_confirmar"
+
+        supplier.credit_terms = "Por confirmar"
+        supplier.credit_days = None
+        supplier.credit_status = "por_confirmar"
+
+        supplier.delivery_time = "Por confirmar"
+        supplier.delivery_days = None
+        supplier.delivery_status = "por_confirmar"
+
+        supplier.certifications = []
+        supplier.certifications_status = "por_confirmar"
+
+        supplier.capacity = "Por confirmar"
+        supplier.capacity_status = "por_confirmar"
+
+        supplier.phone = "Por confirmar"
+        supplier.email = "Por confirmar"
+        supplier.website = "Por confirmar"
+
+    return validated
+
 def research_purchase(query: str) -> tuple[ResearchResult, list[dict[str, str]], str]:
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
@@ -132,5 +186,7 @@ FUENTES DISPONIBLES:
     result = parsed.output_parsed
     if result is None:
         raise RuntimeError("El modelo no devolvió una estructura válida.")
+
+    result = _enforce_source_evidence(result, sources)
 
     return result, sources, report

@@ -34,7 +34,7 @@ def _price_scores(suppliers: list[SupplierResearch]) -> dict[str, float]:
 
 def _credit_score(s: SupplierResearch) -> float:
     if s.credit_days is None:
-        return 35.0 if s.credit_status == "por_confirmar" else 45.0
+        return 0.0 if s.credit_status == "por_confirmar" else 45.0
     days = max(0, s.credit_days)
     if days >= 60:
         return 100.0
@@ -49,7 +49,7 @@ def _credit_score(s: SupplierResearch) -> float:
 
 def _delivery_score(s: SupplierResearch) -> float:
     if s.delivery_days is None:
-        return 35.0 if s.delivery_status == "por_confirmar" else 45.0
+        return 0.0 if s.delivery_status == "por_confirmar" else 45.0
     d = s.delivery_days
     if d <= 1:
         return 100.0
@@ -69,7 +69,7 @@ def _delivery_score(s: SupplierResearch) -> float:
 def _certifications_score(s: SupplierResearch) -> float:
     count = len([c for c in s.certifications if c and c.lower() != "por confirmar"])
     if s.certifications_status == "por_confirmar" and count == 0:
-        return 35.0
+        return 0.0
     if count >= 2:
         return 100.0
     if count == 1:

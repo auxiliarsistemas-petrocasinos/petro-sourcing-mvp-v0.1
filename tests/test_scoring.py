@@ -7,6 +7,12 @@ def supplier(
     *,
     total: float | None = None,
     price_status: str = "por_confirmar",
+    credit_days: int | None = None,
+    credit_status: str = "por_confirmar",
+    delivery_days: float | None = None,
+    delivery_status: str = "por_confirmar",
+    certifications: list[str] | None = None,
+    certifications_status: str = "por_confirmar",
 ) -> SupplierResearch:
     return SupplierResearch(
         supplier_name=name,
@@ -14,9 +20,19 @@ def supplier(
         product_match_status="confirmado",
         estimated_total_delivered_cop=total,
         price_status=price_status,
+        credit_days=credit_days,
+        credit_status=credit_status,
+        delivery_days=delivery_days,
+        delivery_status=delivery_status,
+        certifications=certifications or [],
+        certifications_status=certifications_status,
         evidence_summary="Proveedor usado para pruebas.",
         confidence="media",
     )
+
+
+def row_for(supplier_item: SupplierResearch):
+    return rank_suppliers([supplier_item])[0]
 
 
 def test_cheapest_known_price_gets_highest_price_score():
@@ -49,6 +65,60 @@ def test_all_missing_prices_receive_zero_price_score():
     ranking = rank_suppliers([first, second])
 
     assert all(row.price_score == 0.0 for row in ranking)
+
+
+def test_unknown_credit_receives_zero_credit_score():
+    row = row_for(supplier("Crédito desconocido"))
+
+    assert row.credit_score == 0.0
+
+
+def test_confirmed_credit_is_scored_by_days():
+    row = row_for(
+        supplier(
+            "Crédito 30 días",
+            credit_days=30,
+            credit_status="confirmado",
+        )
+    )
+
+    assert row.credit_score == 80.0
+
+
+def test_unknown_delivery_receives_zero_delivery_score():
+    row = row_for(supplier("Entrega desconocida"))
+
+    assert row.delivery_score == 0.0
+
+
+def test_confirmed_delivery_is_scored_by_days():
+    row = row_for(
+        supplier(
+            "Entrega rápida",
+            delivery_days=2,
+            delivery_status="confirmado",
+        )
+    )
+
+    assert row.delivery_score == 90.0
+
+
+def test_unknown_certifications_receive_zero_certification_score():
+    row = row_for(supplier("Certificaciones desconocidas"))
+
+    assert row.certifications_score == 0.0
+
+
+def test_confirmed_certifications_are_scored():
+    row = row_for(
+        supplier(
+            "Proveedor certificado",
+            certifications=["ISO 9001", "HACCP"],
+            certifications_status="confirmado",
+        )
+    )
+
+    assert row.certifications_score == 100.0
 
 
 def test_ranks_are_consecutive_starting_at_one():

@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Agente de Abastecimiento</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="logo">A</div>
+        <div>
+          <strong>Abastecimiento AI</strong>
+          <small>MVP interno</small>
+        </div>
+      </div>
+
+      <button id="newBtn" class="secondary full">+ Nueva investigación</button>
+
+      <div class="side-title">Historial</div>
+      <div id="history" class="history"></div>
+
+      <div class="sidebar-note">
+        <strong>Ranking V1</strong>
+        <span>Precio 35%</span>
+        <span>Crédito 25%</span>
+        <span>Entrega 20%</span>
+        <span>Certificaciones 15%</span>
+        <span>Evidencia 5%</span>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <h1>Investigación de proveedores</h1>
+          <p>Busca, compara y recomienda con evidencia.</p>
+        </div>
+        <span class="badge">V0.1</span>
+      </header>
+
+      <section class="composer card">
+        <label for="query">¿Qué necesitas comprar?</label>
+        <textarea id="query" rows="5" placeholder="Ej.: Necesito comprar 500 kg de papa negra R-12 para entregar en Bucaramanga. Puede venir de cualquier ciudad. Necesito comparar precio, crédito, tiempo de entrega y certificaciones."></textarea>
+        <div class="composer-footer">
+          <p>El sistema no debe inventar datos: lo desconocido queda “Por confirmar”.</p>
+          <button id="researchBtn" class="primary">Investigar proveedores</button>
+        </div>
+      </section>
+
+      <section id="statusCard" class="card hidden">
+        <div class="status-row">
+          <div class="spinner"></div>
+          <div>
+            <strong id="statusTitle">Investigando...</strong>
+            <p id="statusText">Buscando proveedores y contrastando fuentes públicas.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="results" class="hidden">
+        <div class="summary-grid">
+          <div class="card">
+            <span class="eyebrow">Solicitud interpretada</span>
+            <h2 id="reqProduct"></h2>
+            <p id="reqMeta"></p>
+            <div id="specs" class="chips"></div>
+          </div>
+          <div class="card">
+            <span class="eyebrow">Recomendación</span>
+            <p id="recommendation" class="recommendation"></p>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="section-head">
+            <div>
+              <span class="eyebrow">Ranking</span>
+              <h2>Proveedores encontrados</h2>
+            </div>
+            <span id="sourceCount" class="muted"></span>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Proveedor</th>
+                  <th>Ubicación</th>
+                  <th>Precio</th>
+                  <th>Crédito</th>
+                  <th>Entrega</th>
+                  <th>Certificaciones</th>
+                  <th>Puntaje</th>
+                </tr>
+              </thead>
+              <tbody id="supplierRows"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="details" class="details"></div>
+
+        <div class="summary-grid">
+          <div class="card">
+            <span class="eyebrow">Pendientes</span>
+            <h2>Qué confirmar al contactar</h2>
+            <ul id="pending"></ul>
+          </div>
+          <div class="card">
+            <span class="eyebrow">Fuentes</span>
+            <h2>Evidencia consultada</h2>
+            <div id="globalSources" class="sources"></div>
+          </div>
+        </div>
+
+        <details class="card raw">
+          <summary>Ver informe original de investigación</summary>
+          <pre id="rawReport"></pre>
+        </details>
+      </section>
+    </main>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

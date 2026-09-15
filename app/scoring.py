@@ -18,14 +18,14 @@ def _price_scores(suppliers: list[SupplierResearch]) -> dict[str, float]:
         if s.estimated_total_delivered_cop is not None and s.estimated_total_delivered_cop > 0
     ]
     if not available:
-        return {s.supplier_name: 35.0 for s in suppliers}
+        return {s.supplier_name: 0.0 for s in suppliers}
 
     minimum = min(available)
     scores = {}
     for s in suppliers:
         value = s.estimated_total_delivered_cop
         if value is None or value <= 0:
-            scores[s.supplier_name] = 35.0
+            scores[s.supplier_name] = 0.0
         else:
             # El proveedor más barato obtiene 100. Los demás bajan de forma proporcional.
             scores[s.supplier_name] = max(20.0, min(100.0, 100.0 * minimum / value))
@@ -89,7 +89,7 @@ def rank_suppliers(suppliers: list[SupplierResearch]) -> list[RankedSupplier]:
     rows = []
 
     for s in suppliers:
-        ps = p_scores.get(s.supplier_name, 35.0)
+        ps = p_scores.get(s.supplier_name, 0.0)
         cs = _credit_score(s)
         ds = _delivery_score(s)
         certs = _certifications_score(s)

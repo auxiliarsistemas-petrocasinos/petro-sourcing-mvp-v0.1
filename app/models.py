@@ -57,6 +57,14 @@ class SupplierResearch(BaseModel):
     sources: list[Source] = Field(default_factory=list)
 
 
+class PurchaseRequestInterpretation(BaseModel):
+    interpreted_request: str
+    product: str
+    quantity: str | None = None
+    destination: str | None = None
+    required_specifications: list[str] = Field(default_factory=list)
+
+
 class ResearchResult(BaseModel):
     interpreted_request: str
     product: str

@@ -5,7 +5,23 @@ from typing import Any
 
 from openai import OpenAI
 
-from .models import ResearchResult
+from .models import PurchaseRequestInterpretation, ResearchResult
+
+PURCHASE_INTERPRETATION_PROMPT = """
+Interpreta una solicitud de compra sin inventar información.
+
+Reglas:
+- Extrae únicamente información explícita o inequívoca del mensaje del usuario.
+- Identifica el producto principal solicitado.
+- Conserva cantidad y unidad tal como se entienden de la solicitud.
+- Identifica el destino de entrega solo si está indicado.
+- Extrae especificaciones obligatorias como talla, material, marca, referencia,
+  presentación, dimensiones, norma, grado, empaque u otras características.
+- Si cantidad o destino no están presentes, usa null.
+- No completes datos faltantes por conocimiento general o suposición.
+- `interpreted_request` debe ser una reformulación fiel y breve de la solicitud.
+"""
+
 
 SYSTEM_RESEARCH_PROMPT = """
 Eres un analista senior de abastecimiento para una empresa en Colombia.
@@ -61,6 +77,91 @@ Reglas:
 - No agregues una URL a una lista de evidencia específica si esa fuente no sustenta realmente ese dato.
 - Mantén "Por confirmar" cuando falte información o evidencia específica.
 """
+
+
+def _interpret_purchase_request(
+    client: Any,
+    query: str,
+    model: str,
+) -> PurchaseRequestInterpretation:
+    parsed = client.responses.parse(
+        model=model,
+        input=[
+            {
+                "role": "system",
+                "content": PURCHASE_INTERPRETATION_PROMPT,
+            },
+            {
+                "role": "user",
+                "content": query,
+            },
+        ],
+        text_format=PurchaseRequestInterpretation,
+    )
+
+    intent = parsed.output_parsed
+    if intent is None:
+        raise RuntimeError(
+            "El modelo no pudo interpretar la solicitud de compra."
+        )
+
+    return intent
+
+
+def _build_research_brief(
+    intent: PurchaseRequestInterpretation,
+) -> str:
+    quantity = intent.quantity or "POR CONFIRMAR"
+    destination = intent.destination or "POR CONFIRMAR"
+
+    if intent.required_specifications:
+        specifications = "\n".join(
+            f"- {specification}"
+            for specification in intent.required_specifications
+        )
+    else:
+        specifications = "- POR CONFIRMAR"
+
+    return (
+        "SOLICITUD DE COMPRA INTERPRETADA\n"
+        f"Producto: {intent.product}\n"
+        f"Cantidad: {quantity}\n"
+        f"Destino: {destination}\n"
+        "Especificaciones requeridas:\n"
+        f"{specifications}\n"
+        f"Interpretación: {intent.interpreted_request}"
+    )
+
+
+def _apply_purchase_interpretation(
+    result: ResearchResult,
+    intent: PurchaseRequestInterpretation,
+) -> ResearchResult:
+    normalized = result.model_copy(deep=True)
+
+    normalized.interpreted_request = intent.interpreted_request
+    normalized.product = intent.product
+    normalized.quantity = intent.quantity or "Por confirmar"
+    normalized.destination = intent.destination or "Por confirmar"
+    normalized.required_specifications = list(
+        intent.required_specifications
+    )
+
+    pending_questions = list(normalized.pending_questions)
+
+    if not intent.quantity:
+        question = "¿Qué cantidad necesitas comprar?"
+        if question not in pending_questions:
+            pending_questions.append(question)
+
+    if not intent.destination:
+        question = "¿Cuál es el destino de entrega?"
+        if question not in pending_questions:
+            pending_questions.append(question)
+
+    normalized.pending_questions = pending_questions
+
+    return normalized
 
 
 def _collect_url_annotations(response: Any) -> list[dict[str, str]]:
@@ -223,6 +324,13 @@ def research_purchase(query: str) -> tuple[ResearchResult, list[dict[str, str]],
 
     client = OpenAI(api_key=api_key)
 
+    intent = _interpret_purchase_request(
+        client,
+        query,
+        extract_model,
+    )
+    research_brief = _build_research_brief(intent)
+
     research_response = client.responses.create(
         model=research_model,
         reasoning={"effort": "medium"},
@@ -238,7 +346,7 @@ def research_purchase(query: str) -> tuple[ResearchResult, list[dict[str, str]],
                 "role": "user",
                 "content": (
                     "Investiga esta necesidad de compra y produce un informe detallado, "
-                    "comparativo y sustentado:\n\n" + query
+                    "comparativo y sustentado:\n\n" + research_brief
                 ),
             },
         ],
@@ -273,6 +381,7 @@ FUENTES DISPONIBLES:
     if result is None:
         raise RuntimeError("El modelo no devolvió una estructura válida.")
 
+    result = _apply_purchase_interpretation(result, intent)
     result = _enforce_source_evidence(result, sources)
 
     return result, sources, report

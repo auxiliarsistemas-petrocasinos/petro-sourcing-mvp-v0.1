@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from app import research
+from app import models, research
 from app.models import ResearchResult, Source, SupplierResearch
 
 
@@ -486,3 +486,179 @@ def test_contact_source_from_other_supplier_is_rejected():
     assert checked.phone == "Por confirmar"
     assert checked.email == "Por confirmar"
     assert checked.website == "Por confirmar"
+
+
+
+def test_purchase_brief_preserves_explicit_request_facts():
+    intent = models.PurchaseRequestInterpretation(
+        interpreted_request=(
+            "Comprar 100 cajas de guantes de nitrilo talla M "
+            "para entrega en Bogotá."
+        ),
+        product="Guantes de nitrilo",
+        quantity="100 cajas",
+        destination="Bogotá",
+        required_specifications=["Talla M", "Sin polvo"],
+    )
+
+    brief = research._build_research_brief(intent)
+
+    assert "Guantes de nitrilo" in brief
+    assert "100 cajas" in brief
+    assert "Bogotá" in brief
+    assert "Talla M" in brief
+    assert "Sin polvo" in brief
+
+
+def test_purchase_brief_marks_missing_facts_without_inventing_them():
+    intent = models.PurchaseRequestInterpretation(
+        interpreted_request="Comprar guantes de nitrilo.",
+        product="Guantes de nitrilo",
+        quantity=None,
+        destination=None,
+    )
+
+    brief = research._build_research_brief(intent)
+
+    assert "Producto: Guantes de nitrilo" in brief
+    assert "Cantidad: POR CONFIRMAR" in brief
+    assert "Destino: POR CONFIRMAR" in brief
+
+
+def test_purchase_interpretation_controls_final_request_fields():
+    intent = models.PurchaseRequestInterpretation(
+        interpreted_request=(
+            "Comprar 100 cajas de guantes de nitrilo "
+            "para entrega en Bogotá."
+        ),
+        product="Guantes de nitrilo",
+        quantity="100 cajas",
+        destination="Bogotá",
+        required_specifications=["Talla M"],
+    )
+
+    result = ResearchResult(
+        interpreted_request="Interpretación posterior incorrecta",
+        product="Guantes de látex",
+        quantity="500 cajas",
+        destination="Medellín",
+        required_specifications=["Talla XL"],
+        suppliers=[],
+        recommendation_summary="Resumen",
+    )
+
+    normalized = research._apply_purchase_interpretation(result, intent)
+
+    assert normalized.interpreted_request == intent.interpreted_request
+    assert normalized.product == "Guantes de nitrilo"
+    assert normalized.quantity == "100 cajas"
+    assert normalized.destination == "Bogotá"
+    assert normalized.required_specifications == ["Talla M"]
+
+
+def test_missing_purchase_facts_become_pending_questions():
+    intent = models.PurchaseRequestInterpretation(
+        interpreted_request="Comprar guantes de nitrilo.",
+        product="Guantes de nitrilo",
+        quantity=None,
+        destination=None,
+    )
+
+    result = ResearchResult(
+        interpreted_request="Temporal",
+        product="Temporal",
+        quantity="Temporal",
+        destination="Temporal",
+        suppliers=[],
+        recommendation_summary="Resumen",
+    )
+
+    normalized = research._apply_purchase_interpretation(result, intent)
+
+    assert normalized.quantity == "Por confirmar"
+    assert normalized.destination == "Por confirmar"
+    assert "¿Qué cantidad necesitas comprar?" in normalized.pending_questions
+    assert "¿Cuál es el destino de entrega?" in normalized.pending_questions
+
+
+def test_research_purchase_interprets_request_before_web_research(
+    monkeypatch,
+):
+    intent = models.PurchaseRequestInterpretation(
+        interpreted_request=(
+            "Comprar 100 cajas de guantes de nitrilo "
+            "para entrega en Bogotá."
+        ),
+        product="Guantes de nitrilo",
+        quantity="100 cajas",
+        destination="Bogotá",
+        required_specifications=["Talla M"],
+    )
+
+    extracted_result = ResearchResult(
+        interpreted_request="No debe prevalecer",
+        product="Otro producto",
+        quantity="Otra cantidad",
+        destination="Otro destino",
+        suppliers=[],
+        recommendation_summary="Resumen",
+    )
+
+    events = []
+
+    class FakeResponses:
+        def parse(self, *, model, input, text_format):
+            events.append(("parse", text_format))
+
+            if text_format is models.PurchaseRequestInterpretation:
+                return SimpleNamespace(output_parsed=intent)
+
+            if text_format is ResearchResult:
+                return SimpleNamespace(output_parsed=extracted_result)
+
+            raise AssertionError(f"Formato inesperado: {text_format}")
+
+        def create(self, *, model, reasoning, tools, input):
+            events.append(("research", input))
+
+            user_message = input[1]["content"]
+
+            assert "Producto: Guantes de nitrilo" in user_message
+            assert "Cantidad: 100 cajas" in user_message
+            assert "Destino: Bogotá" in user_message
+            assert "Talla M" in user_message
+
+            return SimpleNamespace(
+                output_text="Informe de investigación",
+                output=[],
+            )
+
+    fake_client = SimpleNamespace(
+        responses=FakeResponses(),
+    )
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr(
+        research,
+        "OpenAI",
+        lambda api_key: fake_client,
+    )
+
+    result, sources, report = research.research_purchase(
+        "Necesito 100 cajas de guantes de nitrilo talla M en Bogotá."
+    )
+
+    assert events[0] == (
+        "parse",
+        models.PurchaseRequestInterpretation,
+    )
+    assert events[1][0] == "research"
+    assert events[2] == ("parse", ResearchResult)
+
+    assert result.product == "Guantes de nitrilo"
+    assert result.quantity == "100 cajas"
+    assert result.destination == "Bogotá"
+    assert result.required_specifications == ["Talla M"]
+
+    assert sources == []
+    assert report == "Informe de investigación"

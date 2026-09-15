@@ -1,4 +1,4 @@
-from app.models import SupplierResearch
+from app.models import Source, SupplierResearch
 from app.scoring import rank_suppliers
 
 
@@ -13,6 +13,8 @@ def supplier(
     delivery_status: str = "por_confirmar",
     certifications: list[str] | None = None,
     certifications_status: str = "por_confirmar",
+    confidence: str = "media",
+    sources: list[Source] | None = None,
 ) -> SupplierResearch:
     return SupplierResearch(
         supplier_name=name,
@@ -27,7 +29,8 @@ def supplier(
         certifications=certifications or [],
         certifications_status=certifications_status,
         evidence_summary="Proveedor usado para pruebas.",
-        confidence="media",
+        confidence=confidence,
+        sources=sources or [],
     )
 
 
@@ -119,6 +122,50 @@ def test_confirmed_certifications_are_scored():
     )
 
     assert row.certifications_score == 100.0
+
+
+def test_supplier_without_sources_receives_zero_evidence_score():
+    row = row_for(
+        supplier(
+            "Proveedor sin fuentes",
+            confidence="alta",
+        )
+    )
+
+    assert row.evidence_score == 0.0
+
+
+def test_supplier_with_source_uses_confidence_for_evidence_score():
+    source = Source(
+        title="Fuente oficial",
+        url="https://example.com/proveedor",
+    )
+
+    high = row_for(
+        supplier(
+            "Evidencia alta",
+            confidence="alta",
+            sources=[source],
+        )
+    )
+    medium = row_for(
+        supplier(
+            "Evidencia media",
+            confidence="media",
+            sources=[source],
+        )
+    )
+    low = row_for(
+        supplier(
+            "Evidencia baja",
+            confidence="baja",
+            sources=[source],
+        )
+    )
+
+    assert high.evidence_score == 100.0
+    assert medium.evidence_score == 70.0
+    assert low.evidence_score == 40.0
 
 
 def test_ranks_are_consecutive_starting_at_one():

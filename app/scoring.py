@@ -78,10 +78,10 @@ def _certifications_score(s: SupplierResearch) -> float:
 
 
 def _evidence_score(s: SupplierResearch) -> float:
-    base = {"alta": 100.0, "media": 70.0, "baja": 40.0}.get(s.confidence, 50.0)
     if not s.sources:
-        return min(base, 35.0)
-    return base
+        return 0.0
+
+    return {"alta": 100.0, "media": 70.0, "baja": 40.0}.get(s.confidence, 50.0)
 
 
 def rank_suppliers(suppliers: list[SupplierResearch]) -> list[RankedSupplier]:

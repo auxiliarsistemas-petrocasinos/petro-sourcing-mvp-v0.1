@@ -10,78 +10,125 @@ WEIGHTS = {
     "evidence": 0.05,
 }
 
+STATUS_MULTIPLIERS = {
+    "confirmado": 1.0,
+    "estimado": 0.8,
+    "por_confirmar": 0.0,
+}
+
+
+def _apply_status_multiplier(score: float, status: str) -> float:
+    return score * STATUS_MULTIPLIERS.get(status, 0.0)
+
 
 def _price_scores(suppliers: list[SupplierResearch]) -> dict[str, float]:
     available = [
         s.estimated_total_delivered_cop
         for s in suppliers
-        if s.estimated_total_delivered_cop is not None and s.estimated_total_delivered_cop > 0
+        if s.estimated_total_delivered_cop is not None
+        and s.estimated_total_delivered_cop > 0
+        and s.price_status != "por_confirmar"
     ]
+
     if not available:
         return {s.supplier_name: 0.0 for s in suppliers}
 
     minimum = min(available)
     scores = {}
+
     for s in suppliers:
         value = s.estimated_total_delivered_cop
+
         if value is None or value <= 0:
             scores[s.supplier_name] = 0.0
-        else:
-            # El proveedor más barato obtiene 100. Los demás bajan de forma proporcional.
-            scores[s.supplier_name] = max(20.0, min(100.0, 100.0 * minimum / value))
+            continue
+
+        base_score = max(20.0, min(100.0, 100.0 * minimum / value))
+        scores[s.supplier_name] = _apply_status_multiplier(
+            base_score,
+            s.price_status,
+        )
+
     return scores
 
 
 def _credit_score(s: SupplierResearch) -> float:
     if s.credit_days is None:
-        return 0.0 if s.credit_status == "por_confirmar" else 45.0
+        return 0.0
+
     days = max(0, s.credit_days)
+
     if days >= 60:
-        return 100.0
-    if days >= 45:
-        return 90.0
-    if days >= 30:
-        return 80.0
-    if days >= 15:
-        return 60.0
-    return 30.0
+        base_score = 100.0
+    elif days >= 45:
+        base_score = 90.0
+    elif days >= 30:
+        base_score = 80.0
+    elif days >= 15:
+        base_score = 60.0
+    else:
+        base_score = 30.0
+
+    return _apply_status_multiplier(base_score, s.credit_status)
 
 
 def _delivery_score(s: SupplierResearch) -> float:
     if s.delivery_days is None:
-        return 0.0 if s.delivery_status == "por_confirmar" else 45.0
-    d = s.delivery_days
-    if d <= 1:
-        return 100.0
-    if d <= 2:
-        return 90.0
-    if d <= 3:
-        return 80.0
-    if d <= 5:
-        return 65.0
-    if d <= 7:
-        return 50.0
-    if d <= 14:
-        return 30.0
-    return 15.0
+        return 0.0
+
+    days = s.delivery_days
+
+    if days <= 1:
+        base_score = 100.0
+    elif days <= 2:
+        base_score = 90.0
+    elif days <= 3:
+        base_score = 80.0
+    elif days <= 5:
+        base_score = 65.0
+    elif days <= 7:
+        base_score = 50.0
+    elif days <= 14:
+        base_score = 30.0
+    else:
+        base_score = 15.0
+
+    return _apply_status_multiplier(base_score, s.delivery_status)
 
 
 def _certifications_score(s: SupplierResearch) -> float:
-    count = len([c for c in s.certifications if c and c.lower() != "por confirmar"])
-    if s.certifications_status == "por_confirmar" and count == 0:
+    certifications = [
+        certification
+        for certification in s.certifications
+        if certification and certification.lower() != "por confirmar"
+    ]
+    count = len(certifications)
+
+    if count == 0:
+        if s.certifications_status == "confirmado":
+            return 20.0
         return 0.0
+
     if count >= 2:
-        return 100.0
-    if count == 1:
-        return 80.0
-    return 20.0
+        base_score = 100.0
+    else:
+        base_score = 80.0
+
+    return _apply_status_multiplier(
+        base_score,
+        s.certifications_status,
+    )
 
 
 def _evidence_score(s: SupplierResearch) -> float:
     if not s.sources:
         return 0.0
 
-    return {"alta": 100.0, "media": 70.0, "baja": 40.0}.get(s.confidence, 50.0)
+    return {
+        "alta": 100.0,
+        "media": 70.0,
+        "baja": 40.0,
+    }.get(s.confidence, 50.0)
 
 
 def rank_suppliers(suppliers: list[SupplierResearch]) -> list[RankedSupplier]:
@@ -116,7 +163,9 @@ def rank_suppliers(suppliers: list[SupplierResearch]) -> list[RankedSupplier]:
             )
         )
 
-    rows.sort(key=lambda r: r.score, reverse=True)
-    for i, row in enumerate(rows, start=1):
-        row.rank = i
+    rows.sort(key=lambda row: row.score, reverse=True)
+
+    for index, row in enumerate(rows, start=1):
+        row.rank = index
+
     return rows

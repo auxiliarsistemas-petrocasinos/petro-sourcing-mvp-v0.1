@@ -178,3 +178,101 @@ def test_ranks_are_consecutive_starting_at_one():
     ranking = rank_suppliers(suppliers)
 
     assert [row.rank for row in ranking] == [1, 2, 3]
+
+
+def test_estimated_price_is_discounted_for_uncertainty():
+    confirmed = supplier(
+        "Precio confirmado",
+        total=100_000,
+        price_status="confirmado",
+    )
+    estimated = supplier(
+        "Precio estimado",
+        total=100_000,
+        price_status="estimado",
+    )
+
+    ranking = rank_suppliers([confirmed, estimated])
+    rows = {row.supplier.supplier_name: row for row in ranking}
+
+    assert rows["Precio confirmado"].price_score == 100.0
+    assert rows["Precio estimado"].price_score == 80.0
+
+
+def test_estimated_credit_is_discounted_for_uncertainty():
+    confirmed = row_for(
+        supplier(
+            "Crédito confirmado",
+            credit_days=30,
+            credit_status="confirmado",
+        )
+    )
+    estimated = row_for(
+        supplier(
+            "Crédito estimado",
+            credit_days=30,
+            credit_status="estimado",
+        )
+    )
+
+    assert confirmed.credit_score == 80.0
+    assert estimated.credit_score == 64.0
+
+
+def test_estimated_delivery_is_discounted_for_uncertainty():
+    confirmed = row_for(
+        supplier(
+            "Entrega confirmada",
+            delivery_days=2,
+            delivery_status="confirmado",
+        )
+    )
+    estimated = row_for(
+        supplier(
+            "Entrega estimada",
+            delivery_days=2,
+            delivery_status="estimado",
+        )
+    )
+
+    assert confirmed.delivery_score == 90.0
+    assert estimated.delivery_score == 72.0
+
+
+def test_estimated_certifications_are_discounted_for_uncertainty():
+    confirmed = row_for(
+        supplier(
+            "Certificaciones confirmadas",
+            certifications=["ISO 9001", "HACCP"],
+            certifications_status="confirmado",
+        )
+    )
+    estimated = row_for(
+        supplier(
+            "Certificaciones estimadas",
+            certifications=["ISO 9001", "HACCP"],
+            certifications_status="estimado",
+        )
+    )
+
+    assert confirmed.certifications_score == 100.0
+    assert estimated.certifications_score == 80.0
+
+
+def test_unconfirmed_price_does_not_set_price_benchmark():
+    confirmed = supplier(
+        "Precio confirmado",
+        total=100_000,
+        price_status="confirmado",
+    )
+    unconfirmed = supplier(
+        "Precio por confirmar",
+        total=50_000,
+        price_status="por_confirmar",
+    )
+
+    ranking = rank_suppliers([confirmed, unconfirmed])
+    rows = {row.supplier.supplier_name: row for row in ranking}
+
+    assert rows["Precio confirmado"].price_score == 100.0
+    assert rows["Precio por confirmar"].price_score == 0.0

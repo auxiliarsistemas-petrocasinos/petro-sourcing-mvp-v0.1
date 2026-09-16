@@ -18,7 +18,10 @@ from tavily.errors import ForbiddenError, InvalidAPIKeyError, UsageLimitExceeded
 from tavily.errors import TimeoutError as TavilyTimeoutError
 
 from .db import get_research, init_db, list_research, save_research
-from .recommendation import build_recommendation_summary
+from .recommendation import (
+    build_pending_questions,
+    build_recommendation_summary,
+)
 from .research import research_purchase
 from .scoring import rank_suppliers
 
@@ -72,6 +75,11 @@ def run_research(payload: ResearchRequest):
             result,
             ranking,
         )
+        result.pending_questions = build_pending_questions(
+            result,
+            ranking,
+        )
+
         body = {
             "result": result.model_dump(),
             "ranking": [r.model_dump() for r in ranking],

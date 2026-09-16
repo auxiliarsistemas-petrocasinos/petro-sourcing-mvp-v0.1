@@ -89,3 +89,98 @@ def build_recommendation_summary(
         )
 
     return " ".join(parts)
+
+
+def build_pending_questions(
+    result: ResearchResult,
+    ranking: list[RankedSupplier],
+) -> list[str]:
+    pending: list[str] = []
+
+    quantity_known = (
+        bool(result.quantity)
+        and result.quantity.strip().lower() != "por confirmar"
+    )
+    destination_known = (
+        bool(result.destination)
+        and result.destination.strip().lower() != "por confirmar"
+    )
+
+    if not quantity_known:
+        pending.append(
+            "¿Qué cantidad necesitas comprar?"
+        )
+
+    if not destination_known:
+        pending.append(
+            "¿Cuál es el destino de entrega?"
+        )
+
+    confirmed_matches = [
+        row
+        for row in ranking
+        if row.supplier.product_match_status == "confirmado"
+    ]
+
+    if not confirmed_matches:
+        pending.append(
+            "Ampliar la investigación para confirmar al menos "
+            "un proveedor que cumpla exactamente la "
+            "especificación solicitada."
+        )
+        return pending
+
+    supplier = confirmed_matches[0].supplier
+    name = supplier.supplier_name
+
+    if quantity_known:
+        pending.append(
+            f"Confirmar con {name} disponibilidad "
+            f"para {result.quantity}."
+        )
+    else:
+        pending.append(
+            f"Confirmar disponibilidad del producto con {name}."
+        )
+
+    if supplier.price_status != "confirmado":
+        pending.append(
+            f"Confirmar precio vigente con {name}."
+        )
+
+    if supplier.credit_status != "confirmado":
+        pending.append(
+            f"Confirmar condiciones de crédito con {name}."
+        )
+
+    if supplier.delivery_status != "confirmado":
+        if destination_known:
+            pending.append(
+                f"Confirmar tiempo de entrega hasta "
+                f"{result.destination} con {name}."
+            )
+        else:
+            pending.append(
+                f"Confirmar tiempo de entrega con {name}."
+            )
+
+    if supplier.certifications_status != "confirmado":
+        pending.append(
+            "Confirmar certificaciones o documentos de calidad "
+            f"con {name}."
+        )
+
+    if supplier.estimated_total_delivered_cop is None:
+        if destination_known:
+            pending.append(
+                f"Confirmar costo total puesto en "
+                f"{result.destination} con {name}, "
+                "incluyendo flete."
+            )
+        else:
+            pending.append(
+                f"Confirmar costo total entregado con {name}, "
+                "incluyendo flete."
+            )
+
+    return pending

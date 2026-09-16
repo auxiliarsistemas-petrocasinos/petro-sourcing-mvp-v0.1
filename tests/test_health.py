@@ -103,6 +103,9 @@ def test_research_replaces_llm_summary_before_response_and_persistence(
         recommendation_summary=(
             "Proveedor Uno tiene stock suficiente para 100 cajas."
         ),
+        pending_questions=[
+            "Proveedor Uno tiene stock suficiente."
+        ],
     )
 
     def fake_research(_query):
@@ -156,9 +159,29 @@ def test_research_replaces_llm_summary_before_response_and_persistence(
     assert "$16.000 COP por caja" in summary
     assert "disponibilidad para 100 cajas" in summary
 
+    pending = body["result"]["pending_questions"]
+
+    assert not any(
+        "stock suficiente" in item.lower()
+        for item in pending
+    )
+    assert (
+        "Confirmar con Proveedor Uno disponibilidad "
+        "para 100 cajas."
+        in pending
+    )
+    assert (
+        "Confirmar condiciones de crédito con Proveedor Uno."
+        in pending
+    )
+
     assert (
         persisted["body"]["result"]["recommendation_summary"]
         == summary
+    )
+    assert (
+        persisted["body"]["result"]["pending_questions"]
+        == pending
     )
     assert persisted["body"]["raw_report"] == "Informe original."
 

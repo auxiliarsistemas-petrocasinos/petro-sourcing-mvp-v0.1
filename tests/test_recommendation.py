@@ -156,3 +156,126 @@ def test_safe_summary_still_confirms_requested_quantity_when_capacity_is_confirm
     )
 
     assert "disponibilidad para 100 cajas" in summary
+
+
+def test_pending_questions_replace_llm_claims():
+    from app.recommendation import build_pending_questions
+
+    top = supplier(
+        "Proveedor Uno",
+        price_text="$16.000 COP por caja",
+        price=16_000,
+        price_status="confirmado",
+    )
+
+    result = ResearchResult(
+        interpreted_request="Comprar guantes.",
+        product="guantes de nitrilo",
+        quantity="100 cajas",
+        destination="Bogotá",
+        suppliers=[top],
+        recommendation_summary="Resumen.",
+        pending_questions=[
+            "Proveedor Uno tiene stock suficiente."
+        ],
+    )
+
+    ranking = rank_suppliers(result.suppliers)
+
+    pending = build_pending_questions(
+        result,
+        ranking,
+    )
+
+    assert not any(
+        "stock suficiente" in item.lower()
+        for item in pending
+    )
+    assert (
+        "Confirmar con Proveedor Uno disponibilidad "
+        "para 100 cajas."
+        in pending
+    )
+    assert (
+        "Confirmar condiciones de crédito con Proveedor Uno."
+        in pending
+    )
+
+
+def test_pending_questions_confirm_estimated_commercial_data():
+    from app.recommendation import build_pending_questions
+
+    top = supplier(
+        "Proveedor Uno",
+        price_text="$16.000 COP por caja",
+        price=16_000,
+        price_status="estimado",
+        delivery_time="1 a 2 días",
+        delivery_days=2,
+        delivery_status="estimado",
+    )
+    top.credit_terms = "30 días estimados"
+    top.credit_status = "estimado"
+    top.certifications = ["ISO 9001"]
+    top.certifications_status = "estimado"
+    top.estimated_total_delivered_cop = 1_600_000
+
+    result = ResearchResult(
+        interpreted_request="Comprar guantes.",
+        product="guantes de nitrilo",
+        quantity="100 cajas",
+        destination="Bogotá",
+        suppliers=[top],
+        recommendation_summary="Resumen.",
+    )
+
+    ranking = rank_suppliers(result.suppliers)
+
+    pending = build_pending_questions(
+        result,
+        ranking,
+    )
+
+    assert (
+        "Confirmar precio vigente con Proveedor Uno."
+        in pending
+    )
+    assert (
+        "Confirmar condiciones de crédito con Proveedor Uno."
+        in pending
+    )
+    assert (
+        "Confirmar tiempo de entrega hasta Bogotá "
+        "con Proveedor Uno."
+        in pending
+    )
+    assert (
+        "Confirmar certificaciones o documentos de calidad "
+        "con Proveedor Uno."
+        in pending
+    )
+
+
+def test_pending_questions_include_missing_request_data():
+    from app.recommendation import build_pending_questions
+
+    result = ResearchResult(
+        interpreted_request="Comprar guantes.",
+        product="guantes de nitrilo",
+        quantity="Por confirmar",
+        destination="Por confirmar",
+        suppliers=[],
+        recommendation_summary="Resumen.",
+    )
+
+    pending = build_pending_questions(
+        result,
+        [],
+    )
+
+    assert "¿Qué cantidad necesitas comprar?" in pending
+    assert "¿Cuál es el destino de entrega?" in pending
+    assert any(
+        "ampliar la investigación" in item.lower()
+        for item in pending
+    )

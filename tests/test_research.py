@@ -1314,3 +1314,278 @@ def test_research_purchase_uses_gemini_with_tavily(
     assert result.destination == "Bogotá"
 
     assert len(model_calls) == 3
+
+
+def test_gemini_model_candidates_include_configured_fallbacks(
+    monkeypatch,
+):
+    monkeypatch.setenv(
+        "GEMINI_FALLBACK_MODELS",
+        "gemini-fallback-1, gemini-fallback-2, gemini-primary",
+    )
+
+    candidates = research._gemini_model_candidates(
+        "gemini-primary"
+    )
+
+    assert candidates == [
+        "gemini-primary",
+        "gemini-fallback-1",
+        "gemini-fallback-2",
+    ]
+
+
+def test_gemini_fallback_uses_next_model_after_transient_error(
+    monkeypatch,
+):
+    monkeypatch.setenv(
+        "GEMINI_FALLBACK_MODELS",
+        "gemini-fallback",
+    )
+
+    calls = []
+
+    error = research.genai_errors.ServerError(
+        503,
+        {
+            "error": {
+                "message": "Service unavailable",
+                "status": "UNAVAILABLE",
+            }
+        },
+        None,
+    )
+
+    def operation(model):
+        calls.append(model)
+
+        if model == "gemini-primary":
+            raise error
+
+        return "respuesta correcta"
+
+    result = research._run_with_gemini_fallback(
+        operation,
+        "gemini-primary",
+    )
+
+    assert result == "respuesta correcta"
+    assert calls == [
+        "gemini-primary",
+        "gemini-fallback",
+    ]
+
+
+def test_gemini_fallback_does_not_retry_invalid_credentials(
+    monkeypatch,
+):
+    monkeypatch.setenv(
+        "GEMINI_FALLBACK_MODELS",
+        "gemini-fallback",
+    )
+
+    calls = []
+
+    error = research.genai_errors.ClientError(
+        401,
+        {
+            "error": {
+                "message": "Invalid API key",
+                "status": "UNAUTHENTICATED",
+            }
+        },
+        None,
+    )
+
+    def operation(model):
+        calls.append(model)
+        raise error
+
+    with pytest.raises(research.genai_errors.APIError):
+        research._run_with_gemini_fallback(
+            operation,
+            "gemini-primary",
+        )
+
+    assert calls == ["gemini-primary"]
+
+
+def test_research_purchase_recovers_with_gemini_fallback(
+    monkeypatch,
+):
+    intent = models.PurchaseRequestInterpretation(
+        interpreted_request=(
+            "Comprar 100 cajas de guantes de nitrilo "
+            "talla M sin polvo para Bogotá."
+        ),
+        product="guantes de nitrilo",
+        quantity="100 cajas",
+        destination="Bogotá",
+        required_specifications=[
+            "talla M",
+            "sin polvo",
+        ],
+    )
+
+    extracted = ResearchResult(
+        interpreted_request="Temporal",
+        product="Temporal",
+        quantity="Temporal",
+        destination="Temporal",
+        suppliers=[],
+        recommendation_summary="Resumen temporal.",
+    )
+
+    model_calls = []
+    primary_failed = False
+
+    transient_error = research.genai_errors.ServerError(
+        503,
+        {
+            "error": {
+                "message": "Service unavailable",
+                "status": "UNAVAILABLE",
+            }
+        },
+        None,
+    )
+
+    class FakeModels:
+        def generate_content(self, **kwargs):
+            nonlocal primary_failed
+
+            model_calls.append(kwargs["model"])
+
+            config = kwargs.get("config")
+            schema = getattr(
+                config,
+                "response_schema",
+                None,
+            )
+
+            if (
+                schema
+                is models.PurchaseRequestInterpretation
+                and kwargs["model"] == "gemini-primary"
+                and not primary_failed
+            ):
+                primary_failed = True
+                raise transient_error
+
+            if schema is models.PurchaseRequestInterpretation:
+                return SimpleNamespace(
+                    parsed=intent,
+                    text=None,
+                )
+
+            if schema is ResearchResult:
+                return SimpleNamespace(
+                    parsed=extracted,
+                    text=None,
+                )
+
+            return SimpleNamespace(
+                parsed=None,
+                text="Informe sustentado con evidencia.",
+            )
+
+    class FakeGeminiClient:
+        def __init__(self, *, api_key):
+            assert api_key == "gemini-test-key"
+            self.models = FakeModels()
+
+    def fake_tavily_search(
+        query,
+        api_key,
+        max_results=8,
+    ):
+        assert "guantes de nitrilo" in query.lower()
+        assert api_key == "tavily-test-key"
+        assert max_results == 8
+
+        return (
+            [
+                {
+                    "title": "Proveedor Uno",
+                    "url": "https://proveedor-uno.example/",
+                }
+            ],
+            (
+                "FUENTE 1\n"
+                "Título: Proveedor Uno\n"
+                "URL: https://proveedor-uno.example/\n"
+                "Contenido: Guantes de nitrilo talla M sin polvo."
+            ),
+        )
+
+    monkeypatch.setenv(
+        "AI_PROVIDER",
+        "gemini",
+    )
+    monkeypatch.setenv(
+        "SEARCH_PROVIDER",
+        "tavily",
+    )
+    monkeypatch.setenv(
+        "GEMINI_API_KEY",
+        "gemini-test-key",
+    )
+    monkeypatch.setenv(
+        "TAVILY_API_KEY",
+        "tavily-test-key",
+    )
+
+    monkeypatch.setenv(
+        "GEMINI_INTERPRET_MODEL",
+        "gemini-primary",
+    )
+    monkeypatch.setenv(
+        "GEMINI_RESEARCH_MODEL",
+        "gemini-primary",
+    )
+    monkeypatch.setenv(
+        "GEMINI_EXTRACT_MODEL",
+        "gemini-primary",
+    )
+    monkeypatch.setenv(
+        "GEMINI_FALLBACK_MODELS",
+        "gemini-fallback",
+    )
+
+    monkeypatch.setattr(
+        research.genai,
+        "Client",
+        FakeGeminiClient,
+    )
+    monkeypatch.setattr(
+        research,
+        "_search_with_tavily",
+        fake_tavily_search,
+    )
+
+    result, sources, report = research.research_purchase(
+        
+            "Necesito 100 cajas de guantes de nitrilo "
+            "talla M sin polvo para Bogotá."
+        
+    )
+
+    assert model_calls == [
+        "gemini-primary",
+        "gemini-fallback",
+        "gemini-primary",
+        "gemini-primary",
+    ]
+
+    assert result.product == "guantes de nitrilo"
+    assert result.quantity == "100 cajas"
+    assert result.destination == "Bogotá"
+
+    assert report == "Informe sustentado con evidencia."
+
+    assert sources == [
+        {
+            "title": "Proveedor Uno",
+            "url": "https://proveedor-uno.example/",
+        }
+    ]

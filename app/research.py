@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from google import genai
+from google.genai import errors as genai_errors
 from google.genai import types
 from openai import OpenAI
 from tavily import TavilyClient
@@ -220,6 +221,63 @@ Reglas:
 - No agregues una URL a una lista de evidencia específica si esa fuente no sustenta realmente ese dato.
 - Mantén "Por confirmar" cuando falte información o evidencia específica.
 """
+
+
+GEMINI_TRANSIENT_ERROR_CODES = {
+    408,
+    429,
+    500,
+    502,
+    503,
+    504,
+}
+
+
+def _gemini_model_candidates(
+    primary_model: str,
+) -> list[str]:
+    configured = os.getenv(
+        "GEMINI_FALLBACK_MODELS",
+        "",
+    )
+
+    candidates: list[str] = []
+
+    for model in [
+        primary_model,
+        *configured.split(","),
+    ]:
+        model = model.strip()
+
+        if model and model not in candidates:
+            candidates.append(model)
+
+    return candidates
+
+
+def _run_with_gemini_fallback(
+    operation: Any,
+    primary_model: str,
+) -> Any:
+    last_error: genai_errors.APIError | None = None
+
+    for model in _gemini_model_candidates(
+        primary_model
+    ):
+        try:
+            return operation(model)
+        except genai_errors.APIError as exc:
+            if exc.code not in GEMINI_TRANSIENT_ERROR_CODES:
+                raise
+
+            last_error = exc
+
+    if last_error is not None:
+        raise last_error
+
+    raise RuntimeError(
+        "No hay modelos Gemini configurados."
+    )
 
 
 def _interpret_purchase_request_gemini(
@@ -668,9 +726,12 @@ def research_purchase(query: str) -> tuple[ResearchResult, list[dict[str, str]],
             api_key=config.api_key,
         )
 
-        intent = _interpret_purchase_request_gemini(
-            client,
-            query,
+        intent = _run_with_gemini_fallback(
+            lambda model: _interpret_purchase_request_gemini(
+                client,
+                query,
+                model,
+            ),
             config.interpret_model,
         )
 
@@ -690,18 +751,24 @@ def research_purchase(query: str) -> tuple[ResearchResult, list[dict[str, str]],
             max_results=8,
         )
 
-        report = _research_with_gemini_from_evidence(
-            client=client,
-            research_brief=research_brief,
-            evidence=evidence,
-            model=config.research_model,
+        report = _run_with_gemini_fallback(
+            lambda model: _research_with_gemini_from_evidence(
+                client=client,
+                research_brief=research_brief,
+                evidence=evidence,
+                model=model,
+            ),
+            config.research_model,
         )
 
-        result = _extract_research_result_gemini(
-            client=client,
-            report=report,
-            sources=sources,
-            model=config.extract_model,
+        result = _run_with_gemini_fallback(
+            lambda model: _extract_research_result_gemini(
+                client=client,
+                report=report,
+                sources=sources,
+                model=model,
+            ),
+            config.extract_model,
         )
 
         result = _apply_purchase_interpretation(

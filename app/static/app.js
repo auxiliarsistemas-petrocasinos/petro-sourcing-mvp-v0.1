@@ -24,6 +24,33 @@ function money(v) {
   return new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(v);
 }
 
+function evidenceLinks(label, sources=[]) {
+  const links = (sources || []).map(src => {
+    const url = String(src.url || "").trim();
+
+    if (!/^https?:\/\//i.test(url)) return "";
+
+    return `
+      <a href="${esc(url)}"
+         target="_blank"
+         rel="noopener noreferrer">
+        ${esc(src.title || url)}
+      </a>
+    `;
+  }).filter(Boolean).join("");
+
+  return `
+    <div class="evidence-row">
+      <strong>${esc(label)}</strong>
+      ${
+        links ||
+        '<span class="muted">Sin evidencia específica vinculada</span>'
+      }
+    </div>
+  `;
+}
+
+
 function setLoading(on, title="Investigando...", text="Buscando proveedores y contrastando fuentes públicas.") {
   researchBtn.disabled = on;
   statusCard.classList.toggle("hidden", !on);
@@ -51,6 +78,10 @@ function render(data) {
           <div class="supplier-name">${esc(s.supplier_name)}</div>
           <div class="muted">${esc(s.supplier_type)}</div>
         </td>
+        <td>
+          <div>${esc(s.product_match)}</div>
+          ${statusBadge(s.product_match_status)}
+        </td>
         <td>${esc(s.city)}, ${esc(s.region)}</td>
         <td>
           ${esc(s.price_text)}
@@ -76,6 +107,13 @@ function render(data) {
         <span class="eyebrow">#${row.rank} · ${row.score}/100 · Confianza ${esc(s.confidence)}</span>
         <h3>${esc(s.supplier_name)}</h3>
         <div class="meta">${esc(s.city)}, ${esc(s.region)} · ${esc(s.supplier_type)}</div>
+
+        <div class="product-match">
+          <strong>Coincidencia con la solicitud</strong>
+          <div>${esc(s.product_match)}</div>
+          ${statusBadge(s.product_match_status)}
+        </div>
+
         <p>${esc(s.evidence_summary)}</p>
 
         <div class="score-grid">
@@ -92,6 +130,21 @@ function render(data) {
           <div><strong>Web</strong><br>${esc(s.website)}</div>
           <div><strong>Capacidad</strong><br>${esc(s.capacity)}<br>${statusBadge(s.capacity_status)}</div>
         </div>
+
+        <details class="field-evidence">
+          <summary>Ver evidencia por dato</summary>
+          <div class="field-evidence-body">
+            ${evidenceLinks("Precio", s.price_sources)}
+            ${evidenceLinks("Crédito", s.credit_sources)}
+            ${evidenceLinks("Entrega", s.delivery_sources)}
+            ${evidenceLinks(
+              "Certificaciones",
+              s.certifications_sources
+            )}
+            ${evidenceLinks("Capacidad", s.capacity_sources)}
+            ${evidenceLinks("Contacto", s.contact_sources)}
+          </div>
+        </details>
 
         <div class="sources">
           <p><strong>Fuentes del proveedor</strong></p>

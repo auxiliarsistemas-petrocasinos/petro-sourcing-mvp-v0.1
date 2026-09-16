@@ -59,29 +59,6 @@ def _validate_purchase_intent(
         )
 
 
-def _validate_purchase_intent(
-    intent: PurchaseRequestInterpretation,
-) -> None:
-    product = (intent.product or "").strip()
-
-    invalid_products = {
-        "",
-        "por confirmar",
-        "n/a",
-        "ninguno",
-        "none",
-    }
-
-    if (
-        not intent.is_purchase_request
-        or product.lower() in invalid_products
-    ):
-        raise InvalidPurchaseRequestError(
-            "Este agente solo atiende solicitudes de "
-            "abastecimiento. Indica qué producto o "
-            "servicio necesitas comprar, cotizar "
-            "o comparar."
-        )
 
 
 def _load_search_config() -> SearchConfig:
@@ -813,7 +790,6 @@ def research_purchase(query: str) -> tuple[ResearchResult, list[dict[str, str]],
         )
 
         _validate_purchase_intent(intent)
-        _validate_purchase_intent(intent)
         research_brief = _build_research_brief(intent)
 
         search_query = (
@@ -880,7 +856,6 @@ def research_purchase(query: str) -> tuple[ResearchResult, list[dict[str, str]],
         query,
         config.interpret_model,
     )
-    _validate_purchase_intent(intent)
     _validate_purchase_intent(intent)
     research_brief = _build_research_brief(intent)
 

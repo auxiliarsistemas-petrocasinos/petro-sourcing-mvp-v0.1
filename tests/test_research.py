@@ -1589,3 +1589,88 @@ def test_research_purchase_recovers_with_gemini_fallback(
             "url": "https://proveedor-uno.example/",
         }
     ]
+
+
+def test_research_purchase_rejects_non_purchase_before_search(
+    monkeypatch,
+):
+    intent = models.PurchaseRequestInterpretation(
+        interpreted_request=(
+            "Pregunta sobre un evento histórico "
+            "del 26 de mayo de 1957."
+        ),
+        product="",
+        quantity=None,
+        destination=None,
+        is_purchase_request=False,
+    )
+
+    class FakeModels:
+        def generate_content(self, **kwargs):
+            return SimpleNamespace(
+                parsed=intent,
+                text=None,
+            )
+
+    class FakeGeminiClient:
+        def __init__(self, *, api_key):
+            assert api_key == "gemini-test-key"
+            self.models = FakeModels()
+
+    def forbidden_search(*args, **kwargs):
+        raise AssertionError(
+            "No se debe consultar Tavily "
+            "para una solicitud que no es de compra."
+        )
+
+    monkeypatch.setenv("AI_PROVIDER", "gemini")
+    monkeypatch.setenv("SEARCH_PROVIDER", "tavily")
+    monkeypatch.setenv(
+        "GEMINI_API_KEY",
+        "gemini-test-key",
+    )
+    monkeypatch.setenv(
+        "TAVILY_API_KEY",
+        "tavily-test-key",
+    )
+
+    monkeypatch.setattr(
+        research.genai,
+        "Client",
+        FakeGeminiClient,
+    )
+    monkeypatch.setattr(
+        research,
+        "_search_with_tavily",
+        forbidden_search,
+    )
+
+    with pytest.raises(
+        research.InvalidPurchaseRequestError,
+        match="solo atiende solicitudes de abastecimiento",
+    ):
+        research.research_purchase(
+            "Que paso el 26 de mayo de 1957?"
+        )
+
+
+
+
+
+def test_purchase_intent_rejects_general_product_question():
+    intent = models.PurchaseRequestInterpretation(
+        interpreted_request=(
+            "Pregunta general sobre qué es "
+            "un guante de nitrilo."
+        ),
+        product="guante de nitrilo",
+        quantity=None,
+        destination=None,
+        is_purchase_request=False,
+    )
+
+    with pytest.raises(
+        research.InvalidPurchaseRequestError,
+        match="solo atiende solicitudes de abastecimiento",
+    ):
+        research._validate_purchase_intent(intent)

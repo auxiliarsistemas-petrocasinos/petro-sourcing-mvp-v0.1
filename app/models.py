@@ -63,6 +63,7 @@ class PurchaseRequestInterpretation(BaseModel):
     quantity: str | None = None
     destination: str | None = None
     required_specifications: list[str] = Field(default_factory=list)
+    is_purchase_request: bool = True
 
 
 class ResearchResult(BaseModel):

@@ -30,6 +30,60 @@ class SearchConfig:
     api_key: str | None
 
 
+class InvalidPurchaseRequestError(ValueError):
+    pass
+
+
+def _validate_purchase_intent(
+    intent: PurchaseRequestInterpretation,
+) -> None:
+    product = (intent.product or "").strip()
+
+    invalid_products = {
+        "",
+        "por confirmar",
+        "n/a",
+        "ninguno",
+        "none",
+    }
+
+    if (
+        not intent.is_purchase_request
+        or product.lower() in invalid_products
+    ):
+        raise InvalidPurchaseRequestError(
+            "Este agente solo atiende solicitudes de "
+            "abastecimiento. Indica qué producto o "
+            "servicio necesitas comprar, cotizar "
+            "o comparar."
+        )
+
+
+def _validate_purchase_intent(
+    intent: PurchaseRequestInterpretation,
+) -> None:
+    product = (intent.product or "").strip()
+
+    invalid_products = {
+        "",
+        "por confirmar",
+        "n/a",
+        "ninguno",
+        "none",
+    }
+
+    if (
+        not intent.is_purchase_request
+        or product.lower() in invalid_products
+    ):
+        raise InvalidPurchaseRequestError(
+            "Este agente solo atiende solicitudes de "
+            "abastecimiento. Indica qué producto o "
+            "servicio necesitas comprar, cotizar "
+            "o comparar."
+        )
+
+
 def _load_search_config() -> SearchConfig:
     provider = os.getenv("SEARCH_PROVIDER", "native").strip().lower()
 
@@ -155,6 +209,17 @@ PURCHASE_INTERPRETATION_PROMPT = """
 Interpreta una solicitud de compra sin inventar información.
 
 Reglas:
+- Decide primero si el mensaje pertenece al dominio de abastecimiento/compras.
+- `is_purchase_request` debe ser true cuando el usuario quiera comprar, abastecer,
+  cotizar, buscar proveedores, comparar proveedores, validar disponibilidad,
+  condiciones comerciales o evaluar un producto/servicio con intención de compra.
+- `is_purchase_request` debe ser false para preguntas de historia, cultura general,
+  política, clima, programación, recetas, conversación casual o conocimiento general
+  sin una necesidad de abastecimiento.
+- Una pregunta meramente informativa sobre un producto, por ejemplo
+  "¿qué es un guante de nitrilo?", no es por sí sola una solicitud de compra.
+- Si `is_purchase_request` es false, no inventes una necesidad de compra para
+  convertir la pregunta en una consulta de proveedores.
 - Extrae únicamente información explícita o inequívoca del mensaje del usuario.
 - Identifica el producto principal solicitado.
 - Conserva cantidad y unidad tal como se entienden de la solicitud.
@@ -747,6 +812,8 @@ def research_purchase(query: str) -> tuple[ResearchResult, list[dict[str, str]],
             config.interpret_model,
         )
 
+        _validate_purchase_intent(intent)
+        _validate_purchase_intent(intent)
         research_brief = _build_research_brief(intent)
 
         search_query = (
@@ -813,6 +880,8 @@ def research_purchase(query: str) -> tuple[ResearchResult, list[dict[str, str]],
         query,
         config.interpret_model,
     )
+    _validate_purchase_intent(intent)
+    _validate_purchase_intent(intent)
     research_brief = _build_research_brief(intent)
 
     research_request: dict[str, Any] = {

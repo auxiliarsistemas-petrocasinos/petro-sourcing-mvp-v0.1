@@ -22,7 +22,10 @@ from .recommendation import (
     build_pending_questions,
     build_recommendation_summary,
 )
-from .research import research_purchase
+from .research import (
+    InvalidPurchaseRequestError,
+    research_purchase,
+)
 from .scoring import rank_suppliers
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -89,6 +92,12 @@ def run_research(payload: ResearchRequest):
         }
         research_id = save_research(query, body)
         return {"research_id": research_id, **body}
+    except InvalidPurchaseRequestError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
+
     except RateLimitError as exc:
         retry_after = exc.response.headers.get("retry-after")
         headers = (

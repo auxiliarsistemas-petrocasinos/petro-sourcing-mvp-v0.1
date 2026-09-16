@@ -376,3 +376,38 @@ def test_research_returns_500_when_tavily_api_key_is_invalid(
             "La configuración del servicio de búsqueda no es válida."
         )
     }
+
+
+
+def test_research_returns_400_for_out_of_scope_request(
+    monkeypatch,
+):
+    from app import main
+    from app.research import InvalidPurchaseRequestError
+
+    def reject_research(_query):
+        raise InvalidPurchaseRequestError(
+            "Este agente solo atiende solicitudes de "
+            "abastecimiento. Indica qué producto o "
+            "servicio necesitas comprar, cotizar "
+            "o comparar."
+        )
+
+    monkeypatch.setattr(
+        main,
+        "research_purchase",
+        reject_research,
+    )
+
+    response = client.post(
+        "/api/research",
+        json={
+            "query": "Que paso el 26 de mayo de 1957?"
+        },
+    )
+
+    assert response.status_code == 400
+    assert (
+        "solo atiende solicitudes de abastecimiento"
+        in response.json()["detail"]
+    )

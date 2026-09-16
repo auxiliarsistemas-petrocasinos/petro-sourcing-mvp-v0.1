@@ -9,6 +9,7 @@ load_dotenv()
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
+from openai import RateLimitError
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
@@ -72,6 +73,22 @@ def run_research(payload: ResearchRequest):
         }
         research_id = save_research(query, body)
         return {"research_id": research_id, **body}
+    except RateLimitError as exc:
+        retry_after = exc.response.headers.get("retry-after")
+        headers = (
+            {"Retry-After": retry_after}
+            if retry_after
+            else None
+        )
+
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "El proveedor de IA alcanzó temporalmente "
+                "su límite de uso."
+            ),
+            headers=headers,
+        ) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 

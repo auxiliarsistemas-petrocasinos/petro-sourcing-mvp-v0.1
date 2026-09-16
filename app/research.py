@@ -1,11 +1,92 @@
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 from typing import Any
 
 from openai import OpenAI
 
 from .models import PurchaseRequestInterpretation, ResearchResult
+
+
+@dataclass(frozen=True)
+class AIConfig:
+    provider: str
+    api_key: str
+    base_url: str | None
+    interpret_model: str
+    research_model: str
+    extract_model: str
+    search_tool: dict[str, Any]
+
+
+def _load_ai_config() -> AIConfig:
+    provider = os.getenv("AI_PROVIDER", "openai").strip().lower()
+
+    if provider == "groq":
+        api_key = os.getenv("GROQ_API_KEY")
+        if not api_key:
+            raise RuntimeError(
+                "Falta GROQ_API_KEY para usar AI_PROVIDER=groq."
+            )
+
+        return AIConfig(
+            provider="groq",
+            api_key=api_key,
+            base_url="https://api.groq.com/openai/v1",
+            interpret_model=os.getenv(
+                "GROQ_INTERPRET_MODEL",
+                "openai/gpt-oss-20b",
+            ),
+            research_model=os.getenv(
+                "GROQ_RESEARCH_MODEL",
+                "openai/gpt-oss-20b",
+            ),
+            extract_model=os.getenv(
+                "GROQ_EXTRACT_MODEL",
+                "openai/gpt-oss-20b",
+            ),
+            search_tool={
+                "type": "browser_search",
+            },
+        )
+
+    if provider == "openai":
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise RuntimeError(
+                "Falta OPENAI_API_KEY para usar AI_PROVIDER=openai."
+            )
+
+        extract_model = os.getenv(
+            "OPENAI_EXTRACT_MODEL",
+            "gpt-5.6-luna",
+        )
+
+        return AIConfig(
+            provider="openai",
+            api_key=api_key,
+            base_url=None,
+            interpret_model=os.getenv(
+                "OPENAI_INTERPRET_MODEL",
+                extract_model,
+            ),
+            research_model=os.getenv(
+                "OPENAI_RESEARCH_MODEL",
+                "gpt-5.6-terra",
+            ),
+            extract_model=extract_model,
+            search_tool={
+                "type": "web_search",
+                "search_context_size": "high",
+            },
+        )
+
+    raise RuntimeError(
+        f"AI_PROVIDER no soportado: {provider}. "
+        "Usa 'openai' o 'groq'."
+    )
+
 
 PURCHASE_INTERPRETATION_PROMPT = """
 Interpreta una solicitud de compra sin inventar información.
@@ -168,18 +249,54 @@ def _collect_url_annotations(response: Any) -> list[dict[str, str]]:
     seen = set()
     sources = []
 
+    def add_source(url: str | None, title: str | None = None) -> None:
+        if not url or url in seen:
+            return
+
+        seen.add(url)
+        sources.append(
+            {
+                "title": title or url,
+                "url": url,
+            }
+        )
+
     for output in getattr(response, "output", []) or []:
-        if getattr(output, "type", None) != "message":
+        output_type = getattr(output, "type", None)
+
+        if output_type == "message":
+            for content in getattr(output, "content", []) or []:
+                for ann in getattr(content, "annotations", []) or []:
+                    if getattr(ann, "type", None) != "url_citation":
+                        continue
+
+                    add_source(
+                        getattr(ann, "url", None),
+                        getattr(ann, "title", None),
+                    )
+
             continue
-        for content in getattr(output, "content", []) or []:
-            for ann in getattr(content, "annotations", []) or []:
-                if getattr(ann, "type", None) != "url_citation":
-                    continue
-                url = getattr(ann, "url", None)
-                title = getattr(ann, "title", None) or url
-                if url and url not in seen:
-                    seen.add(url)
-                    sources.append({"title": title, "url": url})
+
+        if (
+            output_type == "mcp_call"
+            and getattr(output, "name", None) == "browser.open"
+        ):
+            browser_output = getattr(output, "output", None)
+
+            if not isinstance(browser_output, str):
+                continue
+
+            url = None
+            title = None
+
+            for line in browser_output.splitlines():
+                if line.startswith("L1: URL: "):
+                    url = line.removeprefix("L1: URL: ").strip()
+                elif line.startswith("L2: "):
+                    title = line.removeprefix("L2: ").strip()
+
+            add_source(url, title)
+
     return sources
 
 
@@ -313,34 +430,27 @@ def _enforce_source_evidence(
 
 
 def research_purchase(query: str) -> tuple[ResearchResult, list[dict[str, str]], str]:
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise RuntimeError(
-            "Falta OPENAI_API_KEY. Copia .env.example a .env y agrega una clave de la API."
-        )
+    config = _load_ai_config()
 
-    research_model = os.getenv("OPENAI_RESEARCH_MODEL", "gpt-5.6-terra")
-    extract_model = os.getenv("OPENAI_EXTRACT_MODEL", "gpt-5.6-luna")
+    client_kwargs: dict[str, Any] = {
+        "api_key": config.api_key,
+    }
+    if config.base_url:
+        client_kwargs["base_url"] = config.base_url
 
-    client = OpenAI(api_key=api_key)
+    client = OpenAI(**client_kwargs)
 
     intent = _interpret_purchase_request(
         client,
         query,
-        extract_model,
+        config.interpret_model,
     )
     research_brief = _build_research_brief(intent)
 
-    research_response = client.responses.create(
-        model=research_model,
-        reasoning={"effort": "medium"},
-        tools=[
-            {
-                "type": "web_search",
-                "search_context_size": "high",
-            }
-        ],
-        input=[
+    research_request: dict[str, Any] = {
+        "model": config.research_model,
+        "tools": [config.search_tool],
+        "input": [
             {"role": "system", "content": SYSTEM_RESEARCH_PROMPT},
             {
                 "role": "user",
@@ -350,7 +460,15 @@ def research_purchase(query: str) -> tuple[ResearchResult, list[dict[str, str]],
                 ),
             },
         ],
-    )
+    }
+
+    if config.provider == "openai":
+        research_request["reasoning"] = {"effort": "medium"}
+
+    if config.provider == "groq":
+        research_request["tool_choice"] = "required"
+
+    research_response = client.responses.create(**research_request)
 
     report = research_response.output_text
     sources = _collect_url_annotations(research_response)
@@ -369,7 +487,7 @@ FUENTES DISPONIBLES:
 """
 
     parsed = client.responses.parse(
-        model=extract_model,
+        model=config.extract_model,
         input=[
             {"role": "system", "content": EXTRACTION_PROMPT},
             {"role": "user", "content": parse_input},

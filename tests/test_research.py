@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+import pytest
+
 from app import models, research
 from app.models import ResearchResult, Source, SupplierResearch
 
@@ -637,6 +639,7 @@ def test_research_purchase_interprets_request_before_web_research(
         responses=FakeResponses(),
     )
 
+    monkeypatch.setenv("AI_PROVIDER", "openai")
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.setattr(
         research,
@@ -662,3 +665,219 @@ def test_research_purchase_interprets_request_before_web_research(
 
     assert sources == []
     assert report == "Informe de investigación"
+
+
+
+def test_collect_url_annotations_supports_groq_browser_open():
+    response = SimpleNamespace(
+        output=[
+            SimpleNamespace(
+                type="mcp_call",
+                name="browser.search",
+                output=(
+                    "L0:\n"
+                    "L1: URL: https://exa.ai/search?q=proveedores\n"
+                    "L2: # Search Results\n"
+                ),
+            ),
+            SimpleNamespace(
+                type="mcp_call",
+                name="browser.open",
+                output=(
+                    "L0:\n"
+                    "L1: URL: https://hidalguantes.com/\n"
+                    "L2: Guantes Industriales y de Seguridad en Colombia | "
+                    "Hidalguantes\n"
+                    "L3:\n"
+                    "L4: Contenido del proveedor\n"
+                ),
+            ),
+            SimpleNamespace(
+                type="mcp_call",
+                name="browser.open",
+                output=(
+                    "L0:\n"
+                    "L1: URL: https://www.gudescol.com/\n"
+                    "L2: Gudescol – Empresa de productos desechables\n"
+                ),
+            ),
+        ]
+    )
+
+    sources = research._collect_url_annotations(response)
+
+    assert sources == [
+        {
+            "title": (
+                "Guantes Industriales y de Seguridad en Colombia | "
+                "Hidalguantes"
+            ),
+            "url": "https://hidalguantes.com/",
+        },
+        {
+            "title": "Gudescol – Empresa de productos desechables",
+            "url": "https://www.gudescol.com/",
+        },
+    ]
+
+
+
+def test_load_ai_config_supports_groq(monkeypatch):
+    monkeypatch.setenv("AI_PROVIDER", "groq")
+    monkeypatch.setenv("GROQ_API_KEY", "groq-test-key")
+    monkeypatch.setenv(
+        "GROQ_INTERPRET_MODEL",
+        "openai/gpt-oss-20b",
+    )
+    monkeypatch.setenv(
+        "GROQ_RESEARCH_MODEL",
+        "openai/gpt-oss-20b",
+    )
+    monkeypatch.setenv(
+        "GROQ_EXTRACT_MODEL",
+        "openai/gpt-oss-20b",
+    )
+
+    config = research._load_ai_config()
+
+    assert config.provider == "groq"
+    assert config.api_key == "groq-test-key"
+    assert config.base_url == "https://api.groq.com/openai/v1"
+    assert config.interpret_model == "openai/gpt-oss-20b"
+    assert config.research_model == "openai/gpt-oss-20b"
+    assert config.extract_model == "openai/gpt-oss-20b"
+    assert config.search_tool == {"type": "browser_search"}
+
+
+def test_load_ai_config_preserves_openai_provider(monkeypatch):
+    monkeypatch.setenv("AI_PROVIDER", "openai")
+    monkeypatch.setenv("OPENAI_API_KEY", "openai-test-key")
+    monkeypatch.setenv(
+        "OPENAI_RESEARCH_MODEL",
+        "gpt-5.6-terra",
+    )
+    monkeypatch.setenv(
+        "OPENAI_EXTRACT_MODEL",
+        "gpt-5.6-luna",
+    )
+
+    config = research._load_ai_config()
+
+    assert config.provider == "openai"
+    assert config.api_key == "openai-test-key"
+    assert config.base_url is None
+    assert config.interpret_model == "gpt-5.6-luna"
+    assert config.research_model == "gpt-5.6-terra"
+    assert config.extract_model == "gpt-5.6-luna"
+    assert config.search_tool == {
+        "type": "web_search",
+        "search_context_size": "high",
+    }
+
+
+def test_load_ai_config_rejects_unknown_provider(monkeypatch):
+    monkeypatch.setenv("AI_PROVIDER", "desconocido")
+
+    with pytest.raises(
+        RuntimeError,
+        match="AI_PROVIDER no soportado",
+    ):
+        research._load_ai_config()
+
+
+def test_load_ai_config_requires_groq_key(monkeypatch):
+    monkeypatch.setenv("AI_PROVIDER", "groq")
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+
+    with pytest.raises(
+        RuntimeError,
+        match="GROQ_API_KEY",
+    ):
+        research._load_ai_config()
+
+
+def test_research_purchase_uses_groq_provider_config(monkeypatch):
+    intent = models.PurchaseRequestInterpretation(
+        interpreted_request="Comprar 100 cajas de guantes de nitrilo.",
+        product="Guantes de nitrilo",
+        quantity="100 cajas",
+        destination="Bogotá",
+    )
+
+    extracted_result = ResearchResult(
+        interpreted_request="Temporal",
+        product="Temporal",
+        quantity="Temporal",
+        destination="Temporal",
+        suppliers=[],
+        recommendation_summary="Resumen",
+    )
+
+    created_clients = []
+    research_calls = []
+
+    class FakeResponses:
+        def parse(self, *, model, input, text_format):
+            if text_format is models.PurchaseRequestInterpretation:
+                return SimpleNamespace(output_parsed=intent)
+
+            if text_format is ResearchResult:
+                return SimpleNamespace(output_parsed=extracted_result)
+
+            raise AssertionError(f"Formato inesperado: {text_format}")
+
+        def create(self, **kwargs):
+            research_calls.append(kwargs)
+
+            return SimpleNamespace(
+                output_text="Informe",
+                output=[],
+            )
+
+    def fake_openai(**kwargs):
+        created_clients.append(kwargs)
+        return SimpleNamespace(
+            responses=FakeResponses(),
+        )
+
+    monkeypatch.setenv("AI_PROVIDER", "groq")
+    monkeypatch.setenv("GROQ_API_KEY", "groq-test-key")
+    monkeypatch.setenv(
+        "GROQ_INTERPRET_MODEL",
+        "openai/gpt-oss-20b",
+    )
+    monkeypatch.setenv(
+        "GROQ_RESEARCH_MODEL",
+        "openai/gpt-oss-20b",
+    )
+    monkeypatch.setenv(
+        "GROQ_EXTRACT_MODEL",
+        "openai/gpt-oss-20b",
+    )
+    monkeypatch.setattr(
+        research,
+        "OpenAI",
+        fake_openai,
+    )
+
+    result, _, _ = research.research_purchase(
+        "Necesito 100 cajas de guantes de nitrilo en Bogotá."
+    )
+
+    assert created_clients == [
+        {
+            "api_key": "groq-test-key",
+            "base_url": "https://api.groq.com/openai/v1",
+        }
+    ]
+
+    assert research_calls[0]["model"] == "openai/gpt-oss-20b"
+    assert research_calls[0]["tools"] == [
+        {
+            "type": "browser_search",
+        }
+    ]
+
+    assert result.product == "Guantes de nitrilo"
+    assert result.quantity == "100 cajas"
+    assert result.destination == "Bogotá"

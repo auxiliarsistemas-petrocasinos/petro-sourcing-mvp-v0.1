@@ -180,7 +180,12 @@ Reglas obligatorias:
 6. Busca idealmente entre 5 y 10 proveedores si el mercado lo permite.
 7. Para precio, distingue precio del producto de flete/costo puesto en destino.
 8. Si no hay precio público, escribe 'Por confirmar'; no fabriques un valor.
-9. Para crédito, solo afirma días/plazo si hay evidencia explícita. De lo contrario: 'Por confirmar'.
+9. Para crédito, evalúa únicamente crédito comercial otorgado directamente por el proveedor.
+   Solo afirma días/plazo cuando exista evidencia explícita de pago diferido al proveedor,
+   por ejemplo 30, 45 o 60 días contra factura. Tarjetas de crédito, cuotas de pasarelas,
+   marketplaces o financiación de terceros como MercadoPago, Addi, Sistecrédito u otros
+   NO cuentan como crédito comercial del proveedor. Puedes mencionarlos como forma de pago,
+   pero no como días de crédito del proveedor.
 10. Para entrega, si se infiere por distancia o cobertura, márcala como estimada.
 11. Para certificaciones/estándares, incluye solo los que tengan evidencia.
 12. Incluye datos de contacto públicos cuando estén disponibles.
@@ -204,7 +209,14 @@ Reglas:
   un total puesto en destino o una estimación razonablemente sustentada. Si no, null.
 - `price_cop_per_unit` solo si el precio puede expresarse razonablemente en COP por
   la unidad relevante; si no, null.
-- `credit_days` solo si aparece explícitamente; si no, null.
+- `credit_days` solo si aparece explícitamente un plazo de crédito comercial otorgado
+  directamente por el proveedor; si no, null.
+- Tarjetas de crédito, cuotas, pasarelas de pago, marketplaces y financiación de terceros
+  como MercadoPago, Addi, Sistecrédito, PayU o similares NO son crédito comercial del
+  proveedor y nunca deben convertirse en `credit_days`.
+- Si existe una forma de pago financiada por un tercero, puede conservarse descriptivamente
+  en `credit_terms`, pero `credit_days` debe ser null salvo que exista además evidencia
+  independiente de crédito comercial directo del proveedor.
 - `delivery_days` puede ser numérico si está confirmado o estimado de forma clara; si no, null.
 - No inventes URLs. Usa exclusivamente las URL entregadas en la sección FUENTES DISPONIBLES.
 - `sources` contiene las fuentes que sustentan la existencia, identidad o pertinencia general del proveedor.

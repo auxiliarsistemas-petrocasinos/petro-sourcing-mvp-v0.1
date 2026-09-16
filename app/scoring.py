@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import unicodedata
+
 from .eligibility import is_supplier_eligible
 from .models import RankedSupplier, SupplierResearch
 
@@ -107,8 +109,52 @@ def _price_scores(
     return scores
 
 
+THIRD_PARTY_CREDIT_MARKERS = (
+    "mercadopago",
+    "mercado pago",
+    "tarjeta de credito",
+    "pasarela de pago",
+    "pasarela de pagos",
+    "shopify payments",
+    "addi",
+    "sistecredito",
+    "payu",
+    "wompi",
+    "difierelo",
+    "cuotas sin interes",
+)
+
+
+def _normalize_credit_text(value: str) -> str:
+    normalized = unicodedata.normalize(
+        "NFKD",
+        value.strip().lower(),
+    )
+    return "".join(
+        char
+        for char in normalized
+        if not unicodedata.combining(char)
+    )
+
+
+def _is_third_party_credit(
+    supplier: SupplierResearch,
+) -> bool:
+    terms = _normalize_credit_text(
+        supplier.credit_terms or ""
+    )
+
+    return any(
+        marker in terms
+        for marker in THIRD_PARTY_CREDIT_MARKERS
+    )
+
+
 def _credit_score(s: SupplierResearch) -> float:
     if s.credit_days is None or s.credit_days <= 0:
+        return 0.0
+
+    if _is_third_party_credit(s):
         return 0.0
 
     days = s.credit_days

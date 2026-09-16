@@ -419,3 +419,48 @@ def test_zero_credit_days_receives_zero_credit_score():
     assert row.credit_score == 0.0
 
 
+
+
+def test_third_party_financing_does_not_score_as_trade_credit():
+    item = supplier(
+        "Financiación externa",
+        credit_days=30,
+        credit_status="confirmado",
+    )
+    item.credit_terms = (
+        "Financiación a 30 días con MercadoPago"
+    )
+
+    row = row_for(item)
+
+    assert row.credit_score == 0.0
+
+
+def test_card_installments_do_not_score_as_trade_credit():
+    item = supplier(
+        "Pago con tarjeta",
+        credit_days=90,
+        credit_status="confirmado",
+    )
+    item.credit_terms = (
+        "3 cuotas sin interés con tarjeta de crédito"
+    )
+
+    row = row_for(item)
+
+    assert row.credit_score == 0.0
+
+
+def test_direct_trade_credit_still_scores():
+    item = supplier(
+        "Crédito proveedor",
+        credit_days=30,
+        credit_status="confirmado",
+    )
+    item.credit_terms = (
+        "Crédito comercial directo a 30 días"
+    )
+
+    row = row_for(item)
+
+    assert row.credit_score == 80.0

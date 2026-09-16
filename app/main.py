@@ -15,6 +15,7 @@ from openai import RateLimitError
 from pydantic import BaseModel
 
 from .db import get_research, init_db, list_research, save_research
+from .recommendation import build_recommendation_summary
 from .research import research_purchase
 from .scoring import rank_suppliers
 
@@ -64,6 +65,10 @@ def run_research(payload: ResearchRequest):
     try:
         result, global_sources, raw_report = research_purchase(query)
         ranking = rank_suppliers(result.suppliers)
+        result.recommendation_summary = build_recommendation_summary(
+            result,
+            ranking,
+        )
         body = {
             "result": result.model_dump(),
             "ranking": [r.model_dump() for r in ranking],

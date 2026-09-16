@@ -405,3 +405,17 @@ def test_marketplace_does_not_score_or_set_price_benchmark():
         rows["Proveedor directo"].rank
         < rows["Marketplace"].rank
     )
+
+
+def test_zero_credit_days_receives_zero_credit_score():
+    row = row_for(
+        supplier(
+            "Pago de contado",
+            credit_days=0,
+            credit_status="confirmado",
+        )
+    )
+
+    assert row.credit_score == 0.0
+
+

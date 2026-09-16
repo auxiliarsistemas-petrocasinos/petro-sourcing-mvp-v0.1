@@ -108,10 +108,10 @@ def _price_scores(
 
 
 def _credit_score(s: SupplierResearch) -> float:
-    if s.credit_days is None:
+    if s.credit_days is None or s.credit_days <= 0:
         return 0.0
 
-    days = max(0, s.credit_days)
+    days = s.credit_days
 
     if days >= 60:
         base_score = 100.0

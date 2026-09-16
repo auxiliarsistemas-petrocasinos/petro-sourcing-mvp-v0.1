@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .eligibility import is_supplier_eligible
 from .models import RankedSupplier, SupplierResearch
 
 WEIGHTS = {
@@ -27,7 +28,8 @@ def _price_scores(
     eligible = [
         supplier
         for supplier in suppliers
-        if supplier.product_match_status == "confirmado"
+        if is_supplier_eligible(supplier)
+        and supplier.product_match_status == "confirmado"
         and supplier.price_status != "por_confirmar"
     ]
 
@@ -77,7 +79,8 @@ def _price_scores(
 
     for supplier in suppliers:
         if (
-            supplier.product_match_status != "confirmado"
+            not is_supplier_eligible(supplier)
+            or supplier.product_match_status != "confirmado"
             or supplier.price_status == "por_confirmar"
         ):
             scores[supplier.supplier_name] = 0.0
@@ -222,11 +225,18 @@ def rank_suppliers(suppliers: list[SupplierResearch]) -> list[RankedSupplier]:
     rows = []
 
     for s in suppliers:
-        ps = p_scores.get(s.supplier_name, 0.0)
-        cs = _credit_score(s)
-        ds = _delivery_score(s)
-        certs = _certifications_score(s)
-        es = _evidence_score(s)
+        if not is_supplier_eligible(s):
+            ps = 0.0
+            cs = 0.0
+            ds = 0.0
+            certs = 0.0
+            es = 0.0
+        else:
+            ps = p_scores.get(s.supplier_name, 0.0)
+            cs = _credit_score(s)
+            ds = _delivery_score(s)
+            certs = _certifications_score(s)
+            es = _evidence_score(s)
 
         score = (
             ps * WEIGHTS["price"]

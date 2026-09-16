@@ -366,3 +366,42 @@ def test_invima_registration_is_scored_as_certification():
     )
 
     assert row.certifications_score == 80.0
+
+
+def test_marketplace_does_not_score_or_set_price_benchmark():
+    marketplace = supplier(
+        "Marketplace",
+        total=50_000,
+        price_status="confirmado",
+        credit_days=30,
+        credit_status="confirmado",
+        delivery_days=1,
+        delivery_status="confirmado",
+    )
+    marketplace.supplier_type = (
+        "Marketplace / Directorio de múltiples vendedores"
+    )
+
+    direct = supplier(
+        "Proveedor directo",
+        total=100_000,
+        price_status="confirmado",
+    )
+    direct.supplier_type = "Distribuidor mayorista"
+
+    ranking = rank_suppliers(
+        [marketplace, direct]
+    )
+    rows = {
+        row.supplier.supplier_name: row
+        for row in ranking
+    }
+
+    assert rows["Marketplace"].score == 0.0
+    assert rows["Marketplace"].price_score == 0.0
+
+    assert rows["Proveedor directo"].price_score == 100.0
+    assert (
+        rows["Proveedor directo"].rank
+        < rows["Marketplace"].rank
+    )

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .eligibility import is_supplier_eligible
 from .models import RankedSupplier, ResearchResult
 
 
@@ -10,7 +11,10 @@ def build_recommendation_summary(
     confirmed_matches = [
         row
         for row in ranking
-        if row.supplier.product_match_status == "confirmado"
+        if (
+            row.supplier.product_match_status == "confirmado"
+            and is_supplier_eligible(row.supplier)
+        )
     ]
 
     if not confirmed_matches:
@@ -119,7 +123,10 @@ def build_pending_questions(
     confirmed_matches = [
         row
         for row in ranking
-        if row.supplier.product_match_status == "confirmado"
+        if (
+            row.supplier.product_match_status == "confirmado"
+            and is_supplier_eligible(row.supplier)
+        )
     ]
 
     if not confirmed_matches:

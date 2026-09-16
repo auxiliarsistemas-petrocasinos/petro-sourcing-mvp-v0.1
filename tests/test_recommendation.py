@@ -279,3 +279,87 @@ def test_pending_questions_include_missing_request_data():
         "ampliar la investigación" in item.lower()
         for item in pending
     )
+
+
+def test_safe_summary_does_not_recommend_marketplace():
+    marketplace = supplier(
+        "Marketplace",
+        price_text="$10.000 COP por caja",
+        price=10_000,
+        price_status="confirmado",
+    )
+    marketplace.supplier_type = (
+        "Marketplace / Directorio de múltiples vendedores"
+    )
+
+    direct = supplier(
+        "Proveedor Directo",
+        price_text="$16.000 COP por caja",
+        price=16_000,
+        price_status="confirmado",
+    )
+    direct.supplier_type = "Distribuidor mayorista"
+
+    result = ResearchResult(
+        interpreted_request="Comprar guantes.",
+        product="guantes de nitrilo",
+        quantity="100 cajas",
+        destination="Bogotá",
+        suppliers=[marketplace, direct],
+        recommendation_summary="Texto previo.",
+    )
+
+    ranking = rank_suppliers(result.suppliers)
+
+    summary = build_recommendation_summary(
+        result,
+        ranking,
+    )
+
+    assert summary.startswith("Proveedor Directo ")
+    assert "Marketplace encabeza" not in summary
+
+
+def test_pending_questions_target_direct_supplier_not_marketplace():
+    from app.recommendation import build_pending_questions
+
+    marketplace = supplier(
+        "Marketplace",
+        price_text="$10.000 COP por caja",
+        price=10_000,
+        price_status="confirmado",
+    )
+    marketplace.supplier_type = "Marketplace"
+
+    direct = supplier(
+        "Proveedor Directo",
+        price_text="$16.000 COP por caja",
+        price=16_000,
+        price_status="confirmado",
+    )
+    direct.supplier_type = "Fabricante"
+
+    result = ResearchResult(
+        interpreted_request="Comprar guantes.",
+        product="guantes de nitrilo",
+        quantity="100 cajas",
+        destination="Bogotá",
+        suppliers=[marketplace, direct],
+        recommendation_summary="Resumen.",
+    )
+
+    ranking = rank_suppliers(result.suppliers)
+
+    pending = build_pending_questions(
+        result,
+        ranking,
+    )
+
+    assert any(
+        "Proveedor Directo" in item
+        for item in pending
+    )
+    assert not any(
+        "Marketplace" in item
+        for item in pending
+    )

@@ -271,7 +271,10 @@ def rank_suppliers(suppliers: list[SupplierResearch]) -> list[RankedSupplier]:
     rows = []
 
     for s in suppliers:
-        if not is_supplier_eligible(s):
+        if (
+            not is_supplier_eligible(s)
+            or s.product_match_status != "confirmado"
+        ):
             ps = 0.0
             cs = 0.0
             ds = 0.0

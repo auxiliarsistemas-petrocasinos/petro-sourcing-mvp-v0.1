@@ -464,3 +464,56 @@ def test_direct_trade_credit_still_scores():
     row = row_for(item)
 
     assert row.credit_score == 80.0
+
+
+def test_unconfirmed_product_match_receives_zero_total_score():
+    source = Source(
+        title="Fuente oficial",
+        url="https://example.com/proveedor",
+    )
+
+    item = supplier(
+        "Producto no confirmado",
+        total=50_000,
+        price_status="confirmado",
+        credit_days=60,
+        credit_status="confirmado",
+        delivery_days=1,
+        delivery_status="confirmado",
+        certifications=["ISO 9001"],
+        certifications_status="confirmado",
+        confidence="alta",
+        sources=[source],
+    )
+    item.product_match_status = "por_confirmar"
+
+    row = row_for(item)
+
+    assert row.price_score == 0.0
+    assert row.credit_score == 0.0
+    assert row.delivery_score == 0.0
+    assert row.certifications_score == 0.0
+    assert row.evidence_score == 0.0
+    assert row.score == 0.0
+
+
+def test_estimated_product_match_receives_zero_total_score():
+    source = Source(
+        title="Fuente oficial",
+        url="https://example.com/proveedor",
+    )
+
+    item = supplier(
+        "Producto estimado",
+        delivery_days=1,
+        delivery_status="confirmado",
+        confidence="alta",
+        sources=[source],
+    )
+    item.product_match_status = "estimado"
+
+    row = row_for(item)
+
+    assert row.delivery_score == 0.0
+    assert row.evidence_score == 0.0
+    assert row.score == 0.0

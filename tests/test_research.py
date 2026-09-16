@@ -1564,10 +1564,10 @@ def test_research_purchase_recovers_with_gemini_fallback(
     )
 
     result, sources, report = research.research_purchase(
-        
+
             "Necesito 100 cajas de guantes de nitrilo "
             "talla M sin polvo para Bogotá."
-        
+
     )
 
     assert model_calls == [

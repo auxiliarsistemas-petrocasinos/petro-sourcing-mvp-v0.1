@@ -17,7 +17,7 @@ def test_research_returns_503_when_ai_provider_is_rate_limited(
     import httpx
     from openai import RateLimitError
 
-    import app.main as main
+    from app import main
 
     request = httpx.Request(
         "POST",

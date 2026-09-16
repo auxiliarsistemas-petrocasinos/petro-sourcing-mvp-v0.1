@@ -4,7 +4,10 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
+from google import genai
+from google.genai import types
 from openai import OpenAI
+from tavily import TavilyClient
 
 from .models import PurchaseRequestInterpretation, ResearchResult
 
@@ -18,6 +21,39 @@ class AIConfig:
     research_model: str
     extract_model: str
     search_tool: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class SearchConfig:
+    provider: str
+    api_key: str | None
+
+
+def _load_search_config() -> SearchConfig:
+    provider = os.getenv("SEARCH_PROVIDER", "native").strip().lower()
+
+    if provider == "native":
+        return SearchConfig(
+            provider="native",
+            api_key=None,
+        )
+
+    if provider == "tavily":
+        api_key = os.getenv("TAVILY_API_KEY")
+        if not api_key:
+            raise RuntimeError(
+                "Falta TAVILY_API_KEY para usar SEARCH_PROVIDER=tavily."
+            )
+
+        return SearchConfig(
+            provider="tavily",
+            api_key=api_key,
+        )
+
+    raise RuntimeError(
+        f"SEARCH_PROVIDER no soportado: {provider}. "
+        "Usa 'native' o 'tavily'."
+    )
 
 
 def _load_ai_config() -> AIConfig:
@@ -49,6 +85,32 @@ def _load_ai_config() -> AIConfig:
             search_tool={
                 "type": "browser_search",
             },
+        )
+
+    if provider == "gemini":
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            raise RuntimeError(
+                "Falta GEMINI_API_KEY para usar AI_PROVIDER=gemini."
+            )
+
+        return AIConfig(
+            provider="gemini",
+            api_key=api_key,
+            base_url=None,
+            interpret_model=os.getenv(
+                "GEMINI_INTERPRET_MODEL",
+                "gemini-3.6-flash",
+            ),
+            research_model=os.getenv(
+                "GEMINI_RESEARCH_MODEL",
+                "gemini-3.6-flash",
+            ),
+            extract_model=os.getenv(
+                "GEMINI_EXTRACT_MODEL",
+                "gemini-3.6-flash",
+            ),
+            search_tool={},
         )
 
     if provider == "openai":
@@ -84,7 +146,7 @@ def _load_ai_config() -> AIConfig:
 
     raise RuntimeError(
         f"AI_PROVIDER no soportado: {provider}. "
-        "Usa 'openai' o 'groq'."
+        "Usa 'openai', 'groq' o 'gemini'."
     )
 
 
@@ -160,6 +222,37 @@ Reglas:
 """
 
 
+def _interpret_purchase_request_gemini(
+    client: Any,
+    query: str,
+    model: str,
+) -> PurchaseRequestInterpretation:
+    response = client.models.generate_content(
+        model=model,
+        contents=(
+            f"{PURCHASE_INTERPRETATION_PROMPT}\n\n"
+            "SOLICITUD DEL USUARIO:\n"
+            f"{query}"
+        ),
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_schema=PurchaseRequestInterpretation,
+        ),
+    )
+
+    intent = response.parsed
+
+    if intent is None:
+        raise RuntimeError(
+            "Gemini no pudo interpretar la solicitud de compra."
+        )
+
+    if not isinstance(intent, PurchaseRequestInterpretation):
+        intent = PurchaseRequestInterpretation.model_validate(intent)
+
+    return intent
+
+
 def _interpret_purchase_request(
     client: Any,
     query: str,
@@ -187,6 +280,76 @@ def _interpret_purchase_request(
         )
 
     return intent
+
+
+def _research_with_gemini_from_evidence(
+    client: Any,
+    research_brief: str,
+    evidence: str,
+    model: str,
+) -> str:
+    response = client.models.generate_content(
+        model=model,
+        contents=(
+            f"{SYSTEM_RESEARCH_PROMPT}\n\n"
+            "REGLA CRÍTICA ADICIONAL:\n"
+            "Usa exclusivamente la evidencia web proporcionada abajo. "
+            "No afirmes que navegaste otras páginas y no inventes fuentes. "
+            "Cuando un dato no aparezca en la evidencia, indica "
+            "'Por confirmar'.\n\n"
+            f"{research_brief}\n\n"
+            "EVIDENCIA WEB RECUPERADA:\n"
+            f"{evidence}"
+        ),
+    )
+
+    report = (response.text or "").strip()
+
+    if not report:
+        raise RuntimeError(
+            "Gemini no produjo un informe de investigación."
+        )
+
+    return report
+
+
+def _extract_research_result_gemini(
+    client: Any,
+    report: str,
+    sources: list[dict[str, str]],
+    model: str,
+) -> ResearchResult:
+    sources_text = "\n".join(
+        f"- {source['title']}: {source['url']}"
+        for source in sources
+    )
+
+    response = client.models.generate_content(
+        model=model,
+        contents=(
+            f"{EXTRACTION_PROMPT}\n\n"
+            "INFORME DE INVESTIGACIÓN:\n"
+            f"{report}\n\n"
+            "FUENTES DISPONIBLES:\n"
+            f"{sources_text}"
+        ),
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_schema=ResearchResult,
+        ),
+    )
+
+    result = response.parsed
+
+    if result is None:
+        raise RuntimeError(
+            "Gemini no pudo estructurar el resultado de investigación."
+        )
+
+    if not isinstance(result, ResearchResult):
+        result = ResearchResult.model_validate(result)
+
+    return result
 
 
 def _build_research_brief(
@@ -243,6 +406,62 @@ def _apply_purchase_interpretation(
     normalized.pending_questions = pending_questions
 
     return normalized
+
+
+def _search_with_tavily(
+    query: str,
+    api_key: str,
+    max_results: int = 8,
+) -> tuple[list[dict[str, str]], str]:
+    client = TavilyClient(api_key=api_key)
+
+    response = client.search(
+        query=query,
+        max_results=max_results,
+        search_depth="basic",
+        topic="general",
+        country="colombia",
+    )
+
+    seen: set[str] = set()
+    sources: list[dict[str, str]] = []
+    evidence_blocks: list[str] = []
+
+    for result in response.get("results", []):
+        url = (result.get("url") or "").strip()
+
+        if not url or url in seen:
+            continue
+
+        seen.add(url)
+
+        title = (result.get("title") or url).strip()
+        content = (result.get("content") or "").strip()
+
+        sources.append(
+            {
+                "title": title,
+                "url": url,
+            }
+        )
+
+        evidence_blocks.append(
+            "\n".join(
+                [
+                    f"FUENTE {len(sources)}",
+                    f"Título: {title}",
+                    f"URL: {url}",
+                    f"Contenido: {content or 'Sin contenido disponible.'}",
+                ]
+            )
+        )
+
+    if not sources:
+        raise RuntimeError(
+            "Tavily no devolvió resultados web utilizables."
+        )
+
+    return sources, "\n\n".join(evidence_blocks)
 
 
 def _collect_url_annotations(response: Any) -> list[dict[str, str]]:
@@ -431,6 +650,76 @@ def _enforce_source_evidence(
 
 def research_purchase(query: str) -> tuple[ResearchResult, list[dict[str, str]], str]:
     config = _load_ai_config()
+    search_config = _load_search_config()
+
+    if config.provider == "gemini":
+        if search_config.provider != "tavily":
+            raise RuntimeError(
+                "AI_PROVIDER=gemini requiere "
+                "SEARCH_PROVIDER=tavily."
+            )
+
+        if not search_config.api_key:
+            raise RuntimeError(
+                "Falta TAVILY_API_KEY para investigar con Gemini."
+            )
+
+        client = genai.Client(
+            api_key=config.api_key,
+        )
+
+        intent = _interpret_purchase_request_gemini(
+            client,
+            query,
+            config.interpret_model,
+        )
+
+        research_brief = _build_research_brief(intent)
+
+        search_query = (
+            "proveedor distribuidor mayorista "
+            f"{intent.product} "
+            f"{' '.join(intent.required_specifications)} "
+            "Colombia "
+            f"{intent.destination or ''}"
+        ).strip()
+
+        sources, evidence = _search_with_tavily(
+            query=search_query,
+            api_key=search_config.api_key,
+            max_results=8,
+        )
+
+        report = _research_with_gemini_from_evidence(
+            client=client,
+            research_brief=research_brief,
+            evidence=evidence,
+            model=config.research_model,
+        )
+
+        result = _extract_research_result_gemini(
+            client=client,
+            report=report,
+            sources=sources,
+            model=config.extract_model,
+        )
+
+        result = _apply_purchase_interpretation(
+            result,
+            intent,
+        )
+        result = _enforce_source_evidence(
+            result,
+            sources,
+        )
+
+        return result, sources, report
+
+    if search_config.provider != "native":
+        raise RuntimeError(
+            "SEARCH_PROVIDER=tavily actualmente "
+            "requiere AI_PROVIDER=gemini."
+        )
 
     client_kwargs: dict[str, Any] = {
         "api_key": config.api_key,

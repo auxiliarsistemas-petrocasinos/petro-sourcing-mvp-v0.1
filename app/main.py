@@ -9,9 +9,9 @@ load_dotenv()
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
-from openai import RateLimitError
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from openai import RateLimitError
 from pydantic import BaseModel
 
 from .db import get_research, init_db, list_research, save_research

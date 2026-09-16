@@ -11,6 +11,8 @@ dependencies = [
     "python-dotenv>=1.1,<2",
     "openai>=1.100",
     "pydantic>=2.11,<3",
+    "google-genai>=2.23.0",
+    "tavily-python>=0.8.3",
 ]
 
 [dependency-groups]

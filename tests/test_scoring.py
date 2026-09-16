@@ -276,3 +276,93 @@ def test_unconfirmed_price_does_not_set_price_benchmark():
 
     assert rows["Precio confirmado"].price_score == 100.0
     assert rows["Precio por confirmar"].price_score == 0.0
+
+
+def test_unit_prices_are_used_when_delivered_totals_are_missing():
+    cheap = SupplierResearch(
+        supplier_name="Proveedor exacto barato",
+        product_match="Guantes nitrilo talla M sin polvo",
+        product_match_status="confirmado",
+        price_text="$16.000 COP por caja",
+        price_cop_per_unit=16_000,
+        price_status="confirmado",
+        evidence_summary="Precio confirmado.",
+    )
+
+    expensive = SupplierResearch(
+        supplier_name="Proveedor exacto caro",
+        product_match="Guantes nitrilo talla M sin polvo",
+        product_match_status="confirmado",
+        price_text="$19.150 COP por caja",
+        price_cop_per_unit=19_150,
+        price_status="confirmado",
+        evidence_summary="Precio confirmado.",
+    )
+
+    ranking = rank_suppliers([expensive, cheap])
+    rows = {
+        row.supplier.supplier_name: row
+        for row in ranking
+    }
+
+    assert rows["Proveedor exacto barato"].price_score == 100.0
+    assert rows["Proveedor exacto caro"].price_score == 83.6
+
+
+def test_nonmatching_product_price_does_not_set_price_benchmark():
+    exact = SupplierResearch(
+        supplier_name="Talla M",
+        product_match="Guantes nitrilo talla M sin polvo",
+        product_match_status="confirmado",
+        price_text="$16.000 COP",
+        price_cop_per_unit=16_000,
+        price_status="confirmado",
+        evidence_summary="Coincidencia exacta.",
+    )
+
+    wrong_size = SupplierResearch(
+        supplier_name="Talla S",
+        product_match="Guantes nitrilo talla S sin polvo",
+        product_match_status="estimado",
+        price_text="$10.000 COP",
+        price_cop_per_unit=10_000,
+        price_status="confirmado",
+        evidence_summary="La talla no coincide.",
+    )
+
+    ranking = rank_suppliers([wrong_size, exact])
+    rows = {
+        row.supplier.supplier_name: row
+        for row in ranking
+    }
+
+    assert rows["Talla M"].price_score == 100.0
+    assert rows["Talla S"].price_score == 0.0
+
+
+def test_generic_epp_label_is_not_scored_as_certification():
+    row = row_for(
+        supplier(
+            "Proveedor EPP",
+            certifications=[
+                "Elementos de Protección Personal (EPP)",
+            ],
+            certifications_status="confirmado",
+        )
+    )
+
+    assert row.certifications_score == 0.0
+
+
+def test_invima_registration_is_scored_as_certification():
+    row = row_for(
+        supplier(
+            "Proveedor INVIMA",
+            certifications=[
+                "Registro Sanitario Colombia INVIMA 2018",
+            ],
+            certifications_status="confirmado",
+        )
+    )
+
+    assert row.certifications_score == 80.0

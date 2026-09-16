@@ -21,32 +21,84 @@ def _apply_status_multiplier(score: float, status: str) -> float:
     return score * STATUS_MULTIPLIERS.get(status, 0.0)
 
 
-def _price_scores(suppliers: list[SupplierResearch]) -> dict[str, float]:
-    available = [
-        s.estimated_total_delivered_cop
-        for s in suppliers
-        if s.estimated_total_delivered_cop is not None
-        and s.estimated_total_delivered_cop > 0
-        and s.price_status != "por_confirmar"
+def _price_scores(
+    suppliers: list[SupplierResearch],
+) -> dict[str, float]:
+    eligible = [
+        supplier
+        for supplier in suppliers
+        if supplier.product_match_status == "confirmado"
+        and supplier.price_status != "por_confirmar"
     ]
 
-    if not available:
-        return {s.supplier_name: 0.0 for s in suppliers}
+    delivered_totals = [
+        supplier.estimated_total_delivered_cop
+        for supplier in eligible
+        if supplier.estimated_total_delivered_cop is not None
+        and supplier.estimated_total_delivered_cop > 0
+    ]
+
+    unit_prices = [
+        supplier.price_cop_per_unit
+        for supplier in eligible
+        if supplier.price_cop_per_unit is not None
+        and supplier.price_cop_per_unit > 0
+    ]
+
+    if len(delivered_totals) >= 2:
+        def price_value(
+            supplier: SupplierResearch,
+        ) -> float | None:
+            return supplier.estimated_total_delivered_cop
+
+        available = delivered_totals
+    elif unit_prices:
+        def price_value(
+            supplier: SupplierResearch,
+        ) -> float | None:
+            return supplier.price_cop_per_unit
+
+        available = unit_prices
+    elif delivered_totals:
+        def price_value(
+            supplier: SupplierResearch,
+        ) -> float | None:
+            return supplier.estimated_total_delivered_cop
+
+        available = delivered_totals
+    else:
+        return {
+            supplier.supplier_name: 0.0
+            for supplier in suppliers
+        }
 
     minimum = min(available)
-    scores = {}
+    scores: dict[str, float] = {}
 
-    for s in suppliers:
-        value = s.estimated_total_delivered_cop
-
-        if value is None or value <= 0:
-            scores[s.supplier_name] = 0.0
+    for supplier in suppliers:
+        if (
+            supplier.product_match_status != "confirmado"
+            or supplier.price_status == "por_confirmar"
+        ):
+            scores[supplier.supplier_name] = 0.0
             continue
 
-        base_score = max(20.0, min(100.0, 100.0 * minimum / value))
-        scores[s.supplier_name] = _apply_status_multiplier(
-            base_score,
-            s.price_status,
+        value = price_value(supplier)
+
+        if value is None or value <= 0:
+            scores[supplier.supplier_name] = 0.0
+            continue
+
+        base_score = max(
+            20.0,
+            min(100.0, 100.0 * minimum / value),
+        )
+
+        scores[supplier.supplier_name] = (
+            _apply_status_multiplier(
+                base_score,
+                supplier.price_status,
+            )
         )
 
     return scores
@@ -96,17 +148,51 @@ def _delivery_score(s: SupplierResearch) -> float:
     return _apply_status_multiplier(base_score, s.delivery_status)
 
 
+def _looks_like_certification(value: str) -> bool:
+    normalized = value.strip().lower()
+
+    if not normalized or normalized == "por confirmar":
+        return False
+
+    generic_labels = {
+        "epp",
+        "elementos de protección personal",
+        "elementos de protección personal (epp)",
+        "equipo de protección personal",
+        "equipos de protección personal",
+    }
+
+    if normalized in generic_labels:
+        return False
+
+    certification_markers = (
+        "iso ",
+        "iso-",
+        "invima",
+        "registro sanitario",
+        "haccp",
+        "astm ",
+        "ansi ",
+        "ntc ",
+        "certificado",
+        "certificación",
+    )
+
+    return any(
+        marker in normalized
+        for marker in certification_markers
+    )
+
+
 def _certifications_score(s: SupplierResearch) -> float:
     certifications = [
         certification
         for certification in s.certifications
-        if certification and certification.lower() != "por confirmar"
+        if _looks_like_certification(certification)
     ]
     count = len(certifications)
 
     if count == 0:
-        if s.certifications_status == "confirmado":
-            return 20.0
         return 0.0
 
     if count >= 2:

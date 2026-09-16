@@ -640,6 +640,7 @@ def test_research_purchase_interprets_request_before_web_research(
     )
 
     monkeypatch.setenv("AI_PROVIDER", "openai")
+    monkeypatch.setenv("SEARCH_PROVIDER", "native")
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.setattr(
         research,
@@ -724,6 +725,7 @@ def test_collect_url_annotations_supports_groq_browser_open():
 
 def test_load_ai_config_supports_groq(monkeypatch):
     monkeypatch.setenv("AI_PROVIDER", "groq")
+    monkeypatch.setenv("SEARCH_PROVIDER", "native")
     monkeypatch.setenv("GROQ_API_KEY", "groq-test-key")
     monkeypatch.setenv(
         "GROQ_INTERPRET_MODEL",
@@ -841,6 +843,7 @@ def test_research_purchase_uses_groq_provider_config(monkeypatch):
         )
 
     monkeypatch.setenv("AI_PROVIDER", "groq")
+    monkeypatch.setenv("SEARCH_PROVIDER", "native")
     monkeypatch.setenv("GROQ_API_KEY", "groq-test-key")
     monkeypatch.setenv(
         "GROQ_INTERPRET_MODEL",
@@ -881,3 +884,433 @@ def test_research_purchase_uses_groq_provider_config(monkeypatch):
     assert result.product == "Guantes de nitrilo"
     assert result.quantity == "100 cajas"
     assert result.destination == "Bogotá"
+
+
+def test_load_ai_config_supports_gemini(monkeypatch):
+    monkeypatch.setenv("AI_PROVIDER", "gemini")
+    monkeypatch.setenv("GEMINI_API_KEY", "gemini-test-key")
+    monkeypatch.setenv(
+        "GEMINI_INTERPRET_MODEL",
+        "gemini-3.6-flash",
+    )
+    monkeypatch.setenv(
+        "GEMINI_RESEARCH_MODEL",
+        "gemini-3.6-flash",
+    )
+    monkeypatch.setenv(
+        "GEMINI_EXTRACT_MODEL",
+        "gemini-3.6-flash",
+    )
+
+    config = research._load_ai_config()
+
+    assert config.provider == "gemini"
+    assert config.api_key == "gemini-test-key"
+    assert config.base_url is None
+    assert config.interpret_model == "gemini-3.6-flash"
+    assert config.research_model == "gemini-3.6-flash"
+    assert config.extract_model == "gemini-3.6-flash"
+
+
+def test_load_ai_config_requires_gemini_key(monkeypatch):
+    monkeypatch.setenv("AI_PROVIDER", "gemini")
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+
+    with pytest.raises(
+        RuntimeError,
+        match="GEMINI_API_KEY",
+    ):
+        research._load_ai_config()
+
+
+def test_load_search_config_supports_tavily(monkeypatch):
+    monkeypatch.setenv("SEARCH_PROVIDER", "tavily")
+    monkeypatch.setenv("TAVILY_API_KEY", "tavily-test-key")
+
+    config = research._load_search_config()
+
+    assert config.provider == "tavily"
+    assert config.api_key == "tavily-test-key"
+
+
+def test_load_search_config_supports_native(monkeypatch):
+    monkeypatch.setenv("SEARCH_PROVIDER", "native")
+
+    config = research._load_search_config()
+
+    assert config.provider == "native"
+    assert config.api_key is None
+
+
+def test_load_search_config_requires_tavily_key(monkeypatch):
+    monkeypatch.setenv("SEARCH_PROVIDER", "tavily")
+    monkeypatch.delenv("TAVILY_API_KEY", raising=False)
+
+    with pytest.raises(
+        RuntimeError,
+        match="TAVILY_API_KEY",
+    ):
+        research._load_search_config()
+
+
+def test_load_search_config_rejects_unknown_provider(monkeypatch):
+    monkeypatch.setenv("SEARCH_PROVIDER", "desconocido")
+
+    with pytest.raises(
+        RuntimeError,
+        match="SEARCH_PROVIDER no soportado",
+    ):
+        research._load_search_config()
+
+
+def test_search_with_tavily_collects_sources_and_evidence(
+    monkeypatch,
+):
+    created_clients = []
+    search_calls = []
+
+    class FakeTavilyClient:
+        def __init__(self, *, api_key):
+            created_clients.append(api_key)
+
+        def search(self, **kwargs):
+            search_calls.append(kwargs)
+
+            return {
+                "results": [
+                    {
+                        "title": "Proveedor Uno",
+                        "url": "https://proveedor-uno.example/producto",
+                        "content": (
+                            "Guantes de nitrilo talla M sin polvo. "
+                            "Entrega disponible en Bogotá."
+                        ),
+                    },
+                    {
+                        "title": "Proveedor Dos",
+                        "url": "https://proveedor-dos.example/",
+                        "content": (
+                            "Distribuidor colombiano de elementos "
+                            "de protección."
+                        ),
+                    },
+                    {
+                        "title": "Duplicado",
+                        "url": "https://proveedor-uno.example/producto",
+                        "content": "Contenido repetido.",
+                    },
+                    {
+                        "title": "Sin URL",
+                        "url": "",
+                        "content": "No debe utilizarse.",
+                    },
+                ]
+            }
+
+    monkeypatch.setattr(
+        research,
+        "TavilyClient",
+        FakeTavilyClient,
+        raising=False,
+    )
+
+    sources, evidence = research._search_with_tavily(
+        query="proveedores guantes nitrilo Colombia",
+        api_key="tavily-test-key",
+        max_results=8,
+    )
+
+    assert created_clients == ["tavily-test-key"]
+
+    assert search_calls == [
+        {
+            "query": "proveedores guantes nitrilo Colombia",
+            "max_results": 8,
+            "search_depth": "basic",
+            "topic": "general",
+            "country": "colombia",
+        }
+    ]
+
+    assert sources == [
+        {
+            "title": "Proveedor Uno",
+            "url": "https://proveedor-uno.example/producto",
+        },
+        {
+            "title": "Proveedor Dos",
+            "url": "https://proveedor-dos.example/",
+        },
+    ]
+
+    assert "FUENTE 1" in evidence
+    assert "Proveedor Uno" in evidence
+    assert "https://proveedor-uno.example/producto" in evidence
+    assert "Guantes de nitrilo talla M sin polvo." in evidence
+
+    assert "FUENTE 2" in evidence
+    assert "Proveedor Dos" in evidence
+    assert "https://proveedor-dos.example/" in evidence
+
+    assert "Contenido repetido." not in evidence
+    assert "No debe utilizarse." not in evidence
+
+
+def test_search_with_tavily_rejects_empty_results(
+    monkeypatch,
+):
+    class FakeTavilyClient:
+        def __init__(self, *, api_key):
+            pass
+
+        def search(self, **kwargs):
+            return {"results": []}
+
+    monkeypatch.setattr(
+        research,
+        "TavilyClient",
+        FakeTavilyClient,
+        raising=False,
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="Tavily no devolvió resultados",
+    ):
+        research._search_with_tavily(
+            query="producto inexistente",
+            api_key="tavily-test-key",
+        )
+
+
+def test_interpret_purchase_request_with_gemini_uses_structured_output():
+    expected = models.PurchaseRequestInterpretation(
+        interpreted_request=(
+            "Comprar 100 cajas de guantes de nitrilo "
+            "para entrega en Bogotá."
+        ),
+        product="guantes de nitrilo",
+        quantity="100 cajas",
+        destination="Bogotá",
+        required_specifications=["talla M", "sin polvo"],
+    )
+
+    calls = []
+
+    class FakeModels:
+        def generate_content(self, **kwargs):
+            calls.append(kwargs)
+            return SimpleNamespace(parsed=expected)
+
+    client = SimpleNamespace(models=FakeModels())
+
+    result = research._interpret_purchase_request_gemini(
+        client,
+        (
+            "Necesito 100 cajas de guantes de nitrilo "
+            "talla M sin polvo en Bogotá."
+        ),
+        "gemini-test-model",
+    )
+
+    assert result == expected
+    assert calls[0]["model"] == "gemini-test-model"
+    assert "100 cajas" in calls[0]["contents"]
+    assert (
+        calls[0]["config"].response_schema
+        is models.PurchaseRequestInterpretation
+    )
+
+
+def test_extract_research_result_with_gemini_uses_sources():
+    expected = ResearchResult(
+        interpreted_request="Comprar guantes",
+        product="Guantes de nitrilo",
+        quantity="100 cajas",
+        destination="Bogotá",
+        suppliers=[],
+        recommendation_summary="Resumen",
+    )
+
+    calls = []
+
+    class FakeModels:
+        def generate_content(self, **kwargs):
+            calls.append(kwargs)
+            return SimpleNamespace(parsed=expected)
+
+    client = SimpleNamespace(models=FakeModels())
+
+    result = research._extract_research_result_gemini(
+        client=client,
+        report="Informe sustentado.",
+        sources=[
+            {
+                "title": "Proveedor Uno",
+                "url": "https://proveedor-uno.example/",
+            }
+        ],
+        model="gemini-test-model",
+    )
+
+    assert result == expected
+    assert calls[0]["model"] == "gemini-test-model"
+
+    contents = calls[0]["contents"]
+    assert "Informe sustentado." in contents
+    assert "Proveedor Uno" in contents
+    assert "https://proveedor-uno.example/" in contents
+
+    assert calls[0]["config"].response_schema is ResearchResult
+
+
+def test_research_purchase_uses_gemini_with_tavily(
+    monkeypatch,
+):
+    intent = models.PurchaseRequestInterpretation(
+        interpreted_request=(
+            "Comprar 100 cajas de guantes de nitrilo "
+            "para entrega en Bogotá."
+        ),
+        product="guantes de nitrilo",
+        quantity="100 cajas",
+        destination="Bogotá",
+        required_specifications=["talla M", "sin polvo"],
+    )
+
+    extracted = ResearchResult(
+        interpreted_request="Temporal",
+        product="Temporal",
+        quantity="Temporal",
+        destination="Temporal",
+        suppliers=[],
+        recommendation_summary="Resumen Gemini",
+    )
+
+    gemini_keys = []
+    model_calls = []
+    tavily_calls = []
+
+    class FakeModels:
+        def generate_content(self, **kwargs):
+            model_calls.append(kwargs)
+
+            config = kwargs.get("config")
+            schema = getattr(config, "response_schema", None)
+
+            if schema is models.PurchaseRequestInterpretation:
+                return SimpleNamespace(
+                    parsed=intent,
+                    text=None,
+                )
+
+            if schema is ResearchResult:
+                return SimpleNamespace(
+                    parsed=extracted,
+                    text=None,
+                )
+
+            return SimpleNamespace(
+                parsed=None,
+                text="Informe de investigación sustentado.",
+            )
+
+    class FakeGeminiClient:
+        def __init__(self, *, api_key):
+            gemini_keys.append(api_key)
+            self.models = FakeModels()
+
+    def fake_tavily_search(
+        query,
+        api_key,
+        max_results=8,
+    ):
+        tavily_calls.append(
+            {
+                "query": query,
+                "api_key": api_key,
+                "max_results": max_results,
+            }
+        )
+
+        return (
+            [
+                {
+                    "title": "Proveedor Uno",
+                    "url": "https://proveedor-uno.example/",
+                }
+            ],
+            (
+                "FUENTE 1\n"
+                "Título: Proveedor Uno\n"
+                "URL: https://proveedor-uno.example/\n"
+                "Contenido: Guantes de nitrilo."
+            ),
+        )
+
+    monkeypatch.setenv("AI_PROVIDER", "gemini")
+    monkeypatch.setenv("SEARCH_PROVIDER", "tavily")
+    monkeypatch.setenv("GEMINI_API_KEY", "gemini-test-key")
+    monkeypatch.setenv(
+        "GEMINI_INTERPRET_MODEL",
+        "gemini-3.6-flash",
+    )
+    monkeypatch.setenv(
+        "GEMINI_RESEARCH_MODEL",
+        "gemini-3.6-flash",
+    )
+    monkeypatch.setenv(
+        "GEMINI_EXTRACT_MODEL",
+        "gemini-3.6-flash",
+    )
+    monkeypatch.setenv("TAVILY_API_KEY", "tavily-test-key")
+
+    monkeypatch.setattr(
+        research.genai,
+        "Client",
+        FakeGeminiClient,
+    )
+    monkeypatch.setattr(
+        research,
+        "_search_with_tavily",
+        fake_tavily_search,
+    )
+
+    def forbidden_openai(**kwargs):
+        raise AssertionError(
+            "Gemini no debe crear un cliente OpenAI."
+        )
+
+    monkeypatch.setattr(
+        research,
+        "OpenAI",
+        forbidden_openai,
+    )
+
+    result, sources, report = research.research_purchase(
+
+            "Necesito 100 cajas de guantes de nitrilo "
+            "talla M sin polvo para Bogotá."
+
+    )
+
+    assert gemini_keys == ["gemini-test-key"]
+
+    assert len(tavily_calls) == 1
+    assert tavily_calls[0]["api_key"] == "tavily-test-key"
+    assert "guantes de nitrilo" in tavily_calls[0]["query"].lower()
+
+    assert sources == [
+        {
+            "title": "Proveedor Uno",
+            "url": "https://proveedor-uno.example/",
+        }
+    ]
+
+    assert report == "Informe de investigación sustentado."
+
+    assert result.product == "guantes de nitrilo"
+    assert result.quantity == "100 cajas"
+    assert result.destination == "Bogotá"
+
+    assert len(model_calls) == 3

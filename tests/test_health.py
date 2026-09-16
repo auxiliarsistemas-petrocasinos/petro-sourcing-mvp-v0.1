@@ -161,3 +161,195 @@ def test_research_replaces_llm_summary_before_response_and_persistence(
         == summary
     )
     assert persisted["body"]["raw_report"] == "Informe original."
+
+
+def test_research_returns_503_when_gemini_is_temporarily_unavailable(
+    monkeypatch,
+):
+    from google.genai import errors as genai_errors
+
+    from app import main
+
+    error = genai_errors.ServerError(
+        503,
+        {
+            "error": {
+                "message": "Service unavailable",
+                "status": "UNAVAILABLE",
+            }
+        },
+        None,
+    )
+
+    def fail_research(_query):
+        raise error
+
+    monkeypatch.setattr(
+        main,
+        "research_purchase",
+        fail_research,
+    )
+
+    response = client.post(
+        "/api/research",
+        json={
+            "query": (
+                "Necesito comprar 100 cajas de guantes "
+                "de nitrilo en Bogotá."
+            )
+        },
+    )
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": (
+            "El proveedor de IA no está disponible temporalmente."
+        )
+    }
+
+
+def test_research_returns_503_when_tavily_reaches_usage_limit(
+    monkeypatch,
+):
+    from tavily.errors import UsageLimitExceededError
+
+    from app import main
+
+    def fail_research(_query):
+        raise UsageLimitExceededError("Search limit reached")
+
+    monkeypatch.setattr(
+        main,
+        "research_purchase",
+        fail_research,
+    )
+
+    response = client.post(
+        "/api/research",
+        json={
+            "query": (
+                "Necesito comprar 100 cajas de guantes "
+                "de nitrilo en Bogotá."
+            )
+        },
+    )
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": (
+            "El servicio de búsqueda no está disponible temporalmente."
+        )
+    }
+
+
+def test_research_returns_503_when_tavily_times_out(
+    monkeypatch,
+):
+    from tavily.errors import TimeoutError as TavilyTimeoutError
+
+    from app import main
+
+    def fail_research(_query):
+        raise TavilyTimeoutError(30)
+
+    monkeypatch.setattr(
+        main,
+        "research_purchase",
+        fail_research,
+    )
+
+    response = client.post(
+        "/api/research",
+        json={
+            "query": (
+                "Necesito comprar 100 cajas de guantes "
+                "de nitrilo en Bogotá."
+            )
+        },
+    )
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": (
+            "El servicio de búsqueda no está disponible temporalmente."
+        )
+    }
+
+
+def test_research_returns_500_when_gemini_credentials_are_invalid(
+    monkeypatch,
+):
+    from google.genai import errors as genai_errors
+
+    from app import main
+
+    error = genai_errors.ClientError(
+        401,
+        {
+            "error": {
+                "message": "Invalid API key",
+                "status": "UNAUTHENTICATED",
+            }
+        },
+        None,
+    )
+
+    def fail_research(_query):
+        raise error
+
+    monkeypatch.setattr(
+        main,
+        "research_purchase",
+        fail_research,
+    )
+
+    response = client.post(
+        "/api/research",
+        json={
+            "query": (
+                "Necesito comprar 100 cajas de guantes "
+                "de nitrilo en Bogotá."
+            )
+        },
+    )
+
+    assert response.status_code == 500
+    assert response.json() == {
+        "detail": (
+            "La configuración del proveedor de IA no es válida."
+        )
+    }
+
+
+def test_research_returns_500_when_tavily_api_key_is_invalid(
+    monkeypatch,
+):
+    from tavily.errors import InvalidAPIKeyError
+
+    from app import main
+
+    def fail_research(_query):
+        raise InvalidAPIKeyError("Invalid API key")
+
+    monkeypatch.setattr(
+        main,
+        "research_purchase",
+        fail_research,
+    )
+
+    response = client.post(
+        "/api/research",
+        json={
+            "query": (
+                "Necesito comprar 100 cajas de guantes "
+                "de nitrilo en Bogotá."
+            )
+        },
+    )
+
+    assert response.status_code == 500
+    assert response.json() == {
+        "detail": (
+            "La configuración del servicio de búsqueda no es válida."
+        )
+    }

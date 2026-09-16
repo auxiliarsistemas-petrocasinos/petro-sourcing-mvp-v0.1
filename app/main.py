@@ -11,8 +11,11 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from google.genai import errors as genai_errors
 from openai import RateLimitError
 from pydantic import BaseModel
+from tavily.errors import ForbiddenError, InvalidAPIKeyError, UsageLimitExceededError
+from tavily.errors import TimeoutError as TavilyTimeoutError
 
 from .db import get_research, init_db, list_research, save_research
 from .recommendation import build_recommendation_summary
@@ -94,6 +97,51 @@ def run_research(payload: ResearchRequest):
             ),
             headers=headers,
         ) from exc
+    except genai_errors.APIError as exc:
+        if exc.code in {401, 403}:
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    "La configuración del proveedor de IA "
+                    "no es válida."
+                ),
+            ) from exc
+
+        if exc.code in {408, 429, 500, 502, 503, 504}:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "El proveedor de IA no está disponible "
+                    "temporalmente."
+                ),
+            ) from exc
+
+        raise
+
+    except (
+        InvalidAPIKeyError,
+        ForbiddenError,
+    ) as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "La configuración del servicio de búsqueda "
+                "no es válida."
+            ),
+        ) from exc
+
+    except (
+        UsageLimitExceededError,
+        TavilyTimeoutError,
+    ) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "El servicio de búsqueda no está disponible "
+                "temporalmente."
+            ),
+        ) from exc
+
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 

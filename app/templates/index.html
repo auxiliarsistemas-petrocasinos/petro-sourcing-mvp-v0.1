@@ -3,130 +3,251 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Agente de Abastecimiento</title>
-  <link rel="stylesheet" href="/static/styles.css?v=3" />
+  <meta name="theme-color" content="#f5f8fc" />
+  <title>Abastecimiento AI | Petrocasinos</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css?v=4" />
 </head>
 <body>
-  <div class="shell">
-    <aside class="sidebar">
-      <div class="brand">
-        <div class="logo">A</div>
-        <div>
-          <strong>Abastecimiento AI</strong>
-          <small>MVP interno</small>
-        </div>
+  <a class="skip-link" href="#researchComposer">Saltar al contenido principal</a>
+  <div class="app-shell">
+    <aside id="sidebar" class="sidebar" aria-label="Navegación principal">
+      <div class="sidebar-header">
+        <a class="brand" href="#top" aria-label="Abastecimiento AI, ir al inicio">
+          <span class="brand-mark" aria-hidden="true">
+            <img src="/static/petrocasinos-isotipo.png" alt="" width="46" height="46" />
+          </span>
+          <span class="brand-copy">
+            <strong>Abastecimiento AI</strong>
+            <small>Inteligencia para mejores compras</small>
+          </span>
+        </a>
+        <button id="closeSidebarBtn" class="icon-button sidebar-close" type="button" aria-label="Cerrar menú">
+          <i data-lucide="x" aria-hidden="true"></i>
+        </button>
       </div>
 
-      <button id="newBtn" class="secondary full">+ Nueva investigación</button>
+      <button id="newBtn" class="new-research-button" type="button">
+        <i data-lucide="plus" aria-hidden="true"></i>
+        <span>Nueva investigación</span>
+      </button>
 
-      <div class="side-title">Historial</div>
-      <div id="history" class="history"></div>
+      <nav class="primary-nav" aria-label="Secciones">
+        <a href="#top" class="nav-item">
+          <i data-lucide="house" aria-hidden="true"></i>
+          <span>Inicio</span>
+        </a>
+        <a href="#researchComposer" class="nav-item active" aria-current="page">
+          <i data-lucide="package-search" aria-hidden="true"></i>
+          <span>Investigaciones</span>
+        </a>
+        <a href="#supplierDetailsSection" class="nav-item">
+          <i data-lucide="building-2" aria-hidden="true"></i>
+          <span>Proveedores</span>
+        </a>
+        <a href="#evidenceSection" class="nav-item">
+          <i data-lucide="book-open" aria-hidden="true"></i>
+          <span>Biblioteca</span>
+        </a>
+        <span class="nav-item nav-item-disabled" aria-disabled="true">
+          <i data-lucide="settings" aria-hidden="true"></i>
+          <span>Configuración</span>
+        </span>
+      </nav>
 
-      <div class="sidebar-note">
-        <strong>Ranking V1</strong>
-        <span>Precio 35%</span>
-        <span>Crédito 25%</span>
-        <span>Entrega 20%</span>
-        <span>Certificaciones 15%</span>
-        <span>Evidencia 5%</span>
+      <div class="sidebar-section history-section">
+        <div class="side-title">
+          <span>Historial reciente</span>
+          <i data-lucide="history" aria-hidden="true"></i>
+        </div>
+        <div id="history" class="history" aria-live="polite"></div>
+      </div>
+
+      <div class="sidebar-note" aria-label="Pesos de evaluación del ranking">
+        <div class="ranking-note-title">
+          <i data-lucide="sliders-horizontal" aria-hidden="true"></i>
+          <div>
+            <strong>Ranking</strong>
+            <small>Pesos de evaluación</small>
+          </div>
+        </div>
+        <div class="weight-list">
+          <div><span>Precio</span><strong>35%</strong></div>
+          <div><span>Crédito</span><strong>25%</strong></div>
+          <div><span>Entrega</span><strong>20%</strong></div>
+          <div><span>Certificaciones</span><strong>15%</strong></div>
+          <div><span>Evidencia</span><strong>5%</strong></div>
+        </div>
       </div>
     </aside>
 
-    <main class="main">
-      <header class="topbar">
-        <div>
-          <h1>Investigación de proveedores</h1>
-          <p>Busca, compara y recomienda con evidencia.</p>
-        </div>
-        <span class="badge">V0.1</span>
-      </header>
+    <button id="sidebarOverlay" class="sidebar-overlay" type="button" aria-label="Cerrar menú" tabindex="-1"></button>
 
-      <section class="composer card">
-        <label for="query">¿Qué necesitas comprar?</label>
-        <textarea id="query" rows="5" placeholder="Ej.: Necesito comprar 500 kg de papa negra R-12 para entregar en Bucaramanga. Puede venir de cualquier ciudad. Necesito comparar precio, crédito, tiempo de entrega y certificaciones."></textarea>
-        <div class="composer-footer">
-          <p>El sistema no debe inventar datos: lo desconocido queda “Por confirmar”.</p>
-          <button id="researchBtn" class="primary">Investigar proveedores</button>
-        </div>
-      </section>
+    <div class="content-column">
+      <div class="mobile-bar">
+        <button id="menuBtn" class="icon-button" type="button" aria-label="Abrir menú" aria-expanded="false" aria-controls="sidebar">
+          <i data-lucide="menu" aria-hidden="true"></i>
+        </button>
+        <span class="mobile-brand">Abastecimiento AI</span>
+        <span class="version-badge compact">V0.2</span>
+      </div>
 
-      <section id="statusCard" class="card hidden">
-        <div class="status-row">
-          <div class="spinner"></div>
-          <div>
-            <strong id="statusTitle">Investigando...</strong>
-            <p id="statusText">Buscando proveedores y contrastando fuentes públicas.</p>
-          </div>
-        </div>
-      </section>
-
-      <section id="results" class="hidden">
-        <div class="summary-grid">
-          <div class="card">
-            <span class="eyebrow">Solicitud interpretada</span>
-            <h2 id="reqProduct"></h2>
-            <p id="reqMeta"></p>
-            <div id="specs" class="chips"></div>
-          </div>
-          <div class="card">
-            <span class="eyebrow">Recomendación</span>
-            <p id="recommendation" class="recommendation"></p>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="section-head">
-            <div>
-              <span class="eyebrow">Ranking</span>
-              <h2>Proveedores encontrados</h2>
+      <main id="top" class="main">
+        <header class="hero-header">
+          <div class="hero-copy">
+            <span class="platform-eyebrow">Plataforma de abastecimiento inteligente</span>
+            <div class="title-line">
+              <h1>Investigación de proveedores</h1>
+              <span class="version-badge">V0.2</span>
             </div>
-            <span id="sourceCount" class="muted"></span>
+            <p>Busca, compara y recomienda con evidencia.</p>
+          </div>
+          <div class="hero-decoration" aria-hidden="true">
+            <span></span><span></span><span></span><span></span><span></span>
+          </div>
+        </header>
+
+        <section id="researchComposer" class="composer card card-prominent" aria-labelledby="composerTitle">
+          <div class="card-heading">
+            <span class="heading-icon heading-icon-orange" aria-hidden="true">
+              <i data-lucide="package-search"></i>
+            </span>
+            <div>
+              <h2 id="composerTitle">¿Qué necesitas comprar?</h2>
+              <p>Describe tu necesidad con el mayor detalle posible</p>
+            </div>
+          </div>
+          <label class="sr-only" for="query">Necesidad de compra</label>
+          <textarea id="query" rows="5" aria-describedby="queryHelp queryError" placeholder="Ej.: Necesito comprar 500 kg de papa negra R-12 para entregar en Bucaramanga. Puede venir de cualquier ciudad. Necesito comparar precio, crédito, tiempo de entrega y certificaciones."></textarea>
+          <p id="queryError" class="field-error hidden" role="alert"></p>
+          <div class="composer-footer">
+            <p id="queryHelp" class="trust-note">
+              <i data-lucide="shield-check" aria-hidden="true"></i>
+              <span>El sistema no debe inventar datos: lo desconocido queda “Por confirmar”.</span>
+            </p>
+            <button id="researchBtn" class="primary-button" type="button">
+              <i data-lucide="search" aria-hidden="true"></i>
+              <span>Investigar proveedores</span>
+            </button>
+          </div>
+        </section>
+
+        <section id="statusCard" class="card status-card hidden" aria-live="polite" aria-busy="true">
+          <div class="status-row">
+            <div class="spinner" aria-hidden="true"></div>
+            <div>
+              <strong id="statusTitle">Investigando...</strong>
+              <p id="statusText">Buscando proveedores y contrastando fuentes públicas.</p>
+            </div>
+          </div>
+        </section>
+
+        <section id="results" class="results hidden" aria-label="Resultados de investigación">
+          <div class="summary-grid">
+            <article class="card summary-card">
+              <div class="card-heading card-heading-compact">
+                <span class="heading-icon" aria-hidden="true"><i data-lucide="clipboard-check"></i></span>
+                <div>
+                  <span class="eyebrow">Solicitud interpretada</span>
+                  <h2 id="reqProduct"></h2>
+                </div>
+              </div>
+              <p id="reqMeta" class="request-meta"></p>
+              <div id="specs" class="chips"></div>
+            </article>
+
+            <article class="card summary-card recommendation-card">
+              <div class="card-heading card-heading-compact">
+                <span class="heading-icon heading-icon-orange" aria-hidden="true"><i data-lucide="badge-check"></i></span>
+                <div>
+                  <span class="eyebrow">Análisis del sistema</span>
+                  <h2>Recomendación</h2>
+                </div>
+              </div>
+              <p id="recommendation" class="recommendation"></p>
+            </article>
           </div>
 
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Proveedor</th>
-                  <th>Coincidencia</th>
-                  <th>Disponibilidad</th>
-                  <th>Ubicación</th>
-                  <th>Precio</th>
-                  <th>Crédito</th>
-                  <th>Entrega</th>
-                  <th>Certificaciones</th>
-                  <th>Puntaje</th>
-                </tr>
-              </thead>
-              <tbody id="supplierRows"></tbody>
-            </table>
-          </div>
-        </div>
+          <section class="card ranking-card" aria-labelledby="rankingTitle">
+            <div class="section-head">
+              <div>
+                <span class="eyebrow">Ranking comparativo</span>
+                <h2 id="rankingTitle">Proveedores encontrados</h2>
+              </div>
+              <span id="sourceCount" class="count-pill"></span>
+            </div>
 
-        <div id="details" class="details"></div>
+            <div class="table-wrap" tabindex="0" role="region" aria-label="Ranking de proveedores; desplázate horizontalmente para ver todas las columnas">
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col">#</th>
+                    <th scope="col">Proveedor</th>
+                    <th scope="col">Coincidencia</th>
+                    <th scope="col">Disponibilidad</th>
+                    <th scope="col">Ubicación</th>
+                    <th scope="col">Precio</th>
+                    <th scope="col">Crédito</th>
+                    <th scope="col">Entrega</th>
+                    <th scope="col">Certificaciones</th>
+                    <th scope="col">Puntaje</th>
+                  </tr>
+                </thead>
+                <tbody id="supplierRows"></tbody>
+              </table>
+            </div>
+          </section>
 
-        <div class="summary-grid">
-          <div class="card">
-            <span class="eyebrow">Pendientes</span>
-            <h2>Qué confirmar al contactar</h2>
-            <ul id="pending"></ul>
-          </div>
-          <div class="card">
-            <span class="eyebrow">Fuentes</span>
-            <h2>Evidencia consultada</h2>
-            <div id="globalSources" class="sources"></div>
-          </div>
-        </div>
+          <section id="supplierDetailsSection" class="supplier-details-section" aria-labelledby="supplierDetailsTitle">
+            <div class="section-title-block">
+              <span class="heading-icon" aria-hidden="true"><i data-lucide="building-2"></i></span>
+              <div>
+                <span class="eyebrow">Información ampliada</span>
+                <h2 id="supplierDetailsTitle">Detalles de proveedores</h2>
+              </div>
+            </div>
+            <div id="details" class="details"></div>
+          </section>
 
-        <details class="card raw">
-          <summary>Ver informe original de investigación</summary>
-          <pre id="rawReport"></pre>
-        </details>
-      </section>
-    </main>
+          <div id="evidenceSection" class="summary-grid lower-grid">
+            <article class="card">
+              <div class="card-heading card-heading-compact">
+                <span class="heading-icon heading-icon-orange" aria-hidden="true"><i data-lucide="circle-alert"></i></span>
+                <div>
+                  <span class="eyebrow">Pendientes</span>
+                  <h2>Qué confirmar al contactar</h2>
+                </div>
+              </div>
+              <ul id="pending" class="pending-list"></ul>
+            </article>
+
+            <article class="card">
+              <div class="card-heading card-heading-compact">
+                <span class="heading-icon" aria-hidden="true"><i data-lucide="database"></i></span>
+                <div>
+                  <span class="eyebrow">Fuentes</span>
+                  <h2>Evidencia consultada</h2>
+                </div>
+              </div>
+              <div id="globalSources" class="sources global-sources"></div>
+            </article>
+          </div>
+
+          <details class="card raw">
+            <summary>
+              <span><i data-lucide="file-text" aria-hidden="true"></i> Ver informe original de investigación</span>
+              <i class="details-chevron" data-lucide="chevron-down" aria-hidden="true"></i>
+            </summary>
+            <pre id="rawReport"></pre>
+          </details>
+        </section>
+      </main>
+    </div>
   </div>
 
-  <script src="/static/app.js?v=3"></script>
+  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.js" defer></script>
+  <script src="/static/app.js?v=4" defer></script>
 </body>
 </html>

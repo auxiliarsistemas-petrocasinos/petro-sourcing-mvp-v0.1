@@ -17,7 +17,14 @@ from pydantic import BaseModel
 from tavily.errors import ForbiddenError, InvalidAPIKeyError, UsageLimitExceededError
 from tavily.errors import TimeoutError as TavilyTimeoutError
 
-from .db import get_research, init_db, list_research, save_research
+from .db import (
+    get_research,
+    init_db,
+    list_research,
+    save_research,
+    update_research,
+)
+from .models import ResearchResult
 from .recommendation import (
     build_pending_questions,
     build_recommendation_summary,
@@ -49,6 +56,10 @@ templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
 class ResearchRequest(BaseModel):
     query: str
+
+
+class PriceReviewRequest(BaseModel):
+    status: str
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -161,6 +172,110 @@ def run_research(payload: ResearchRequest):
 
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.patch(
+    "/api/research/{research_id}/suppliers/"
+    "{supplier_name}/price-review"
+)
+def update_supplier_price_review(
+    research_id: int,
+    supplier_name: str,
+    payload: PriceReviewRequest,
+):
+    if payload.status != "validated":
+        raise HTTPException(
+            status_code=422,
+            detail="Estado de revisión de precio no soportado.",
+        )
+
+    item = get_research(research_id)
+    if not item:
+        raise HTTPException(
+            status_code=404,
+            detail="Investigación no encontrada.",
+        )
+
+    body = item["result"]
+    result = ResearchResult.model_validate(
+        body["result"]
+    )
+
+    matches = [
+        supplier
+        for supplier in result.suppliers
+        if supplier.supplier_name == supplier_name
+    ]
+
+    if not matches:
+        raise HTTPException(
+            status_code=404,
+            detail="Proveedor no encontrado.",
+        )
+
+    if len(matches) > 1:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "El nombre del proveedor no identifica "
+                "un único resultado."
+            ),
+        )
+
+    supplier = matches[0]
+
+    if supplier.price_review_status not in {
+        "requires_review",
+        "validated",
+    }:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "El precio del proveedor no está pendiente "
+                "de validación."
+            ),
+        )
+
+    supplier.price_review_status = "validated"
+    supplier.price_review_reason = None
+
+    ranking = rank_suppliers(result.suppliers)
+
+    result.recommendation_summary = (
+        build_recommendation_summary(
+            result,
+            ranking,
+        )
+    )
+    result.pending_questions = (
+        build_pending_questions(
+            result,
+            ranking,
+        )
+    )
+
+    updated_body = {
+        **body,
+        "result": result.model_dump(),
+        "ranking": [
+            row.model_dump()
+            for row in ranking
+        ],
+    }
+
+    if not update_research(
+        research_id,
+        updated_body,
+    ):
+        raise HTTPException(
+            status_code=404,
+            detail="Investigación no encontrada.",
+        )
+
+    return {
+        "research_id": research_id,
+        **updated_body,
+    }
 
 
 @app.get("/api/history")

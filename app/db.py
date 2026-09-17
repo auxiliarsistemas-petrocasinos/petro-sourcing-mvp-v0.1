@@ -37,6 +37,23 @@ def save_research(query: str, payload: dict) -> int:
         return int(cur.lastrowid)
 
 
+
+def update_research(
+    research_id: int,
+    payload: dict,
+) -> bool:
+    with sqlite3.connect(DB_PATH) as conn:
+        cur = conn.execute(
+            "UPDATE research SET result_json = ? WHERE id = ?",
+            (
+                json.dumps(payload, ensure_ascii=False),
+                research_id,
+            ),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+
+
 def list_research(limit: int = 20) -> list[dict]:
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row

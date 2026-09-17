@@ -2316,3 +2316,55 @@ details[open] > summary .details-chevron {
   background: var(--brand-orange-50);
   color: #a64112;
 }
+
+.price-review-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.price-review-controls .status {
+  margin-top: 4px;
+}
+
+.price-review-action {
+  display: inline-flex;
+  min-height: 25px;
+  align-items: center;
+  gap: 5px;
+  margin-top: 4px;
+  padding: 4px 8px;
+  border: 1px solid rgba(222, 90, 27, 0.2);
+  border-radius: 999px;
+  background: #fff;
+  color: #a64112;
+  cursor: pointer;
+  font-size: 0.58rem;
+  font-weight: 800;
+  line-height: 1.2;
+  transition:
+    background-color var(--transition),
+    border-color var(--transition),
+    opacity var(--transition);
+}
+
+.price-review-action:hover {
+  border-color: rgba(222, 90, 27, 0.34);
+  background: var(--brand-orange-50);
+}
+
+.price-review-action:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.price-review-action svg {
+  width: 12px;
+  height: 12px;
+}
+
+.commercial-item > .price-review-controls {
+  grid-column: 1 / -1;
+}

@@ -77,6 +77,34 @@ function priceReviewBadge(supplier) {
   return statusBadge("requires_review");
 }
 
+function priceReviewControls(supplier, researchId) {
+  const badge = priceReviewBadge(supplier);
+
+  if (
+    supplier.price_review_status !== "requires_review" ||
+    !researchId
+  ) {
+    return badge;
+  }
+
+  return `
+    <div class="price-review-controls">
+      ${badge}
+      <button
+        class="price-review-action"
+        type="button"
+        data-price-review
+        data-research-id="${esc(researchId)}"
+        data-supplier-name="${esc(supplier.supplier_name)}"
+        aria-label="Validar precio de ${esc(supplier.supplier_name)}"
+      >
+        ${icon("badge-check")}
+        <span>Validar precio</span>
+      </button>
+    </div>
+  `;
+}
+
 function isAvailabilityRestricted(supplier) {
   return (
     supplier.availability_status === "sin_stock" ||
@@ -285,7 +313,7 @@ function render(data) {
             ${secondaryPriceDetails(supplier)}
             ${supplier.estimated_total_delivered_cop ? `<div class="table-secondary">${esc(money(supplier.estimated_total_delivered_cop))} total estimado</div>` : ""}
             ${statusBadge(supplier.price_status)}
-            ${priceReviewBadge(supplier)}
+            ${priceReviewControls(supplier, data.research_id)}
           </td>
           <td>${esc(supplier.credit_terms)}<br>${statusBadge(supplier.credit_status)}</td>
           <td>${esc(supplier.delivery_time)}<br>${statusBadge(supplier.delivery_status)}</td>
@@ -363,7 +391,7 @@ function render(data) {
                 supplier.price_status,
                 secondaryPriceDetails(supplier),
               )}
-              ${priceReviewBadge(supplier)}
+              ${priceReviewControls(supplier, data.research_id)}
             </div>
             <div class="commercial-item">
               ${icon("calendar-clock")}
@@ -447,6 +475,44 @@ function render(data) {
   window.scrollTo({ top: results.offsetTop - 20, behavior: "smooth" });
 }
 
+async function validatePriceReview(button) {
+  const researchId = button.dataset.researchId;
+  const supplierName = button.dataset.supplierName;
+
+  const confirmed = window.confirm(
+    `¿Confirmas que revisaste y validaste el precio de ${supplierName}?`,
+  );
+
+  if (!confirmed) return;
+
+  button.disabled = true;
+
+  try {
+    const response = await fetch(
+      `/api/research/${encodeURIComponent(researchId)}/suppliers/${encodeURIComponent(supplierName)}/price-review`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "validated" }),
+      },
+    );
+
+    const body = await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        body.detail || "No se pudo validar el precio.",
+      );
+    }
+
+    render(body);
+    loadHistory();
+  } catch (error) {
+    button.disabled = false;
+    window.alert(error.message);
+  }
+}
+
 async function research() {
   const query = queryEl.value.trim();
   if (query.length < 10) {
@@ -509,7 +575,10 @@ async function loadHistory() {
         if (!response.ok) return;
         const item = await response.json();
         queryEl.value = item.query;
-        render(item.result);
+        render({
+          research_id: item.id,
+          ...item.result,
+        });
         closeSidebar();
       });
     });
@@ -533,6 +602,13 @@ function closeSidebar() {
   document.body.classList.remove("sidebar-open");
   menuBtn.setAttribute("aria-expanded", "false");
 }
+
+results.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-price-review]");
+  if (!button) return;
+
+  validatePriceReview(button);
+});
 
 researchBtn.addEventListener("click", research);
 queryEl.addEventListener("keydown", (event) => {

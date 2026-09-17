@@ -411,3 +411,204 @@ def test_research_returns_400_for_out_of_scope_request(
         "solo atiende solicitudes de abastecimiento"
         in response.json()["detail"]
     )
+
+
+def test_validating_reviewed_price_persists_and_recalculates_ranking(
+    monkeypatch,
+):
+    from app import main
+    from app.models import ResearchResult, SupplierResearch
+    from app.scoring import rank_suppliers
+
+    suspicious = SupplierResearch(
+        supplier_name="Precio sospechoso",
+        product_match="Producto solicitado",
+        product_match_status="confirmado",
+        estimated_total_delivered_cop=40_000,
+        price_status="confirmado",
+        evidence_summary="Precio confirmado.",
+    )
+    normal = SupplierResearch(
+        supplier_name="Precio normal",
+        product_match="Producto solicitado",
+        product_match_status="confirmado",
+        estimated_total_delivered_cop=100_000,
+        price_status="confirmado",
+        evidence_summary="Precio confirmado.",
+    )
+    high = SupplierResearch(
+        supplier_name="Precio alto",
+        product_match="Producto solicitado",
+        product_match_status="confirmado",
+        estimated_total_delivered_cop=105_000,
+        price_status="confirmado",
+        evidence_summary="Precio confirmado.",
+    )
+
+    result = ResearchResult(
+        interpreted_request="Comprar producto.",
+        product="Producto",
+        quantity="1",
+        destination="Bogotá",
+        suppliers=[suspicious, normal, high],
+        recommendation_summary="",
+        pending_questions=[],
+    )
+
+    initial_ranking = rank_suppliers(result.suppliers)
+
+    assert suspicious.price_review_status == "requires_review"
+
+    stored_item = {
+        "id": 77,
+        "created_at": "2026-09-17T16:00:00+00:00",
+        "query": "Necesito comprar un producto.",
+        "result": {
+            "result": result.model_dump(),
+            "ranking": [
+                row.model_dump()
+                for row in initial_ranking
+            ],
+            "source_count": 0,
+            "global_sources": [],
+            "raw_report": "",
+        },
+    }
+
+    persisted = {}
+
+    def fake_get_research(research_id):
+        if research_id != 77:
+            return None
+        return stored_item
+
+    def fake_update_research(research_id, payload):
+        persisted["research_id"] = research_id
+        persisted["payload"] = payload
+        stored_item["result"] = payload
+        return True
+
+    monkeypatch.setattr(
+        main,
+        "get_research",
+        fake_get_research,
+    )
+    monkeypatch.setattr(
+        main,
+        "update_research",
+        fake_update_research,
+        raising=False,
+    )
+
+    response = client.patch(
+        (
+            "/api/research/77/suppliers/"
+            "Precio%20sospechoso/price-review"
+        ),
+        json={"status": "validated"},
+    )
+
+    assert response.status_code == 200
+
+    body = response.json()
+
+    suppliers = {
+        supplier["supplier_name"]: supplier
+        for supplier in body["result"]["suppliers"]
+    }
+    ranking = {
+        row["supplier"]["supplier_name"]: row
+        for row in body["ranking"]
+    }
+
+    assert (
+        suppliers["Precio sospechoso"]["price_review_status"]
+        == "validated"
+    )
+    assert (
+        suppliers["Precio sospechoso"]["price_review_reason"]
+        is None
+    )
+    assert ranking["Precio sospechoso"]["price_score"] == 100.0
+
+    assert persisted["research_id"] == 77
+
+    reloaded = client.get("/api/history/77")
+
+    assert reloaded.status_code == 200
+
+    reloaded_suppliers = {
+        supplier["supplier_name"]: supplier
+        for supplier
+        in reloaded.json()["result"]["result"]["suppliers"]
+    }
+
+    assert (
+        reloaded_suppliers[
+            "Precio sospechoso"
+        ]["price_review_status"]
+        == "validated"
+    )
+
+
+def test_price_validation_rejects_price_not_pending_review(
+    monkeypatch,
+):
+    from app import main
+    from app.models import ResearchResult, SupplierResearch
+
+    supplier = SupplierResearch(
+        supplier_name="Precio normal",
+        product_match="Producto solicitado",
+        product_match_status="confirmado",
+        estimated_total_delivered_cop=100_000,
+        price_status="confirmado",
+        evidence_summary="Precio confirmado.",
+    )
+
+    result = ResearchResult(
+        interpreted_request="Comprar producto.",
+        product="Producto",
+        quantity="1",
+        destination="Bogotá",
+        suppliers=[supplier],
+        recommendation_summary="",
+        pending_questions=[],
+    )
+
+    stored_item = {
+        "id": 88,
+        "created_at": "2026-09-17T16:00:00+00:00",
+        "query": "Necesito comprar un producto.",
+        "result": {
+            "result": result.model_dump(),
+            "ranking": [],
+            "source_count": 0,
+            "global_sources": [],
+            "raw_report": "",
+        },
+    }
+
+    monkeypatch.setattr(
+        main,
+        "get_research",
+        lambda research_id: (
+            stored_item if research_id == 88 else None
+        ),
+    )
+
+    response = client.patch(
+        (
+            "/api/research/88/suppliers/"
+            "Precio%20normal/price-review"
+        ),
+        json={"status": "validated"},
+    )
+
+    assert response.status_code == 409
+    assert response.json() == {
+        "detail": (
+            "El precio del proveedor no está pendiente "
+            "de validación."
+        )
+    }

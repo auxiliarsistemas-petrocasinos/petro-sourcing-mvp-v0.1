@@ -4,6 +4,13 @@ from .eligibility import is_supplier_eligible
 from .models import RankedSupplier, ResearchResult
 
 
+def _needs_evidence_reinforcement(supplier) -> bool:
+    return (
+        supplier.confidence == "baja"
+        or not supplier.sources
+    )
+
+
 def build_recommendation_summary(
     result: ResearchResult,
     ranking: list[RankedSupplier],
@@ -34,6 +41,21 @@ def build_recommendation_summary(
             f"con {top.score:.1f} puntos."
         )
     ]
+
+    if _needs_evidence_reinforcement(supplier):
+        if not supplier.sources:
+            parts.append(
+                f"La evidencia disponible para "
+                f"{supplier.supplier_name} no cuenta con fuentes "
+                "registradas; antes de adjudicar se debe reforzar "
+                "la evidencia."
+            )
+        else:
+            parts.append(
+                f"La evidencia disponible para "
+                f"{supplier.supplier_name} tiene confianza baja; "
+                "antes de adjudicar se debe reforzar la evidencia."
+            )
 
     if (
         supplier.price_status != "por_confirmar"
@@ -170,6 +192,11 @@ def build_pending_questions(
 
     supplier = confirmed_matches[0].supplier
     name = supplier.supplier_name
+
+    if _needs_evidence_reinforcement(supplier):
+        pending.append(
+            f"Reforzar la evidencia de {name} antes de adjudicar."
+        )
 
     if quantity_known:
         pending.append(

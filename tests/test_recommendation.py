@@ -539,3 +539,97 @@ def test_validated_price_no_longer_generates_review_warning():
         in item
         for item in pending
     )
+
+
+def test_summary_warns_when_recommended_supplier_has_low_confidence():
+    top = supplier(
+        "Proveedor Uno",
+        price_text="$16.000 COP por caja",
+        price=16_000,
+        price_status="confirmado",
+    )
+    top.confidence = "baja"
+
+    result = ResearchResult(
+        interpreted_request="Comprar guantes.",
+        product="guantes de nitrilo",
+        quantity="100 cajas",
+        destination="Bogotá",
+        suppliers=[top],
+        recommendation_summary="Texto previo.",
+    )
+
+    ranking = rank_suppliers(result.suppliers)
+
+    summary = build_recommendation_summary(
+        result,
+        ranking,
+    )
+
+    assert "Proveedor Uno" in summary
+    assert "confianza baja" in summary.lower()
+    assert "antes de adjudicar" in summary.lower()
+
+
+def test_summary_warns_when_recommended_supplier_has_no_sources():
+    top = supplier(
+        "Proveedor Uno",
+        price_text="$16.000 COP por caja",
+        price=16_000,
+        price_status="confirmado",
+    )
+    top.sources = []
+
+    result = ResearchResult(
+        interpreted_request="Comprar guantes.",
+        product="guantes de nitrilo",
+        quantity="100 cajas",
+        destination="Bogotá",
+        suppliers=[top],
+        recommendation_summary="Texto previo.",
+    )
+
+    ranking = rank_suppliers(result.suppliers)
+
+    summary = build_recommendation_summary(
+        result,
+        ranking,
+    )
+
+    assert "Proveedor Uno" in summary
+    assert "fuentes" in summary.lower()
+    assert "antes de adjudicar" in summary.lower()
+
+
+def test_pending_questions_require_stronger_evidence_for_weak_recommendation():
+    from app.recommendation import build_pending_questions
+
+    top = supplier(
+        "Proveedor Uno",
+        price_text="$16.000 COP por caja",
+        price=16_000,
+        price_status="confirmado",
+    )
+    top.confidence = "baja"
+
+    result = ResearchResult(
+        interpreted_request="Comprar guantes.",
+        product="guantes de nitrilo",
+        quantity="100 cajas",
+        destination="Bogotá",
+        suppliers=[top],
+        recommendation_summary="Resumen.",
+    )
+
+    ranking = rank_suppliers(result.suppliers)
+
+    pending = build_pending_questions(
+        result,
+        ranking,
+    )
+
+    assert any(
+        "reforzar la evidencia" in item.lower()
+        and "Proveedor Uno" in item
+        for item in pending
+    )

@@ -14,9 +14,54 @@ function esc(value="") {
     .replaceAll('"', "&quot;");
 }
 
+function humanStatus(value) {
+  const labels = {
+    confirmado: "Confirmado",
+    estimado: "Estimado",
+    por_confirmar: "Por confirmar",
+    disponible: "Disponible",
+    sin_stock: "Sin stock",
+    suficiente: "Cantidad suficiente",
+    insuficiente: "Cantidad insuficiente"
+  };
+
+  return labels[value] || String(value || "Por confirmar").replaceAll("_", " ");
+}
+
 function statusBadge(value) {
-  const cls = String(value || "por_confirmar").replaceAll(" ", "_");
-  return `<span class="status status-${cls}">${esc(value || "por confirmar")}</span>`;
+  const normalized = String(value || "por_confirmar");
+  const cls = normalized.toLowerCase().replaceAll(" ", "_");
+
+  return `<span class="status status-${cls}">${esc(humanStatus(normalized))}</span>`;
+}
+
+function isAvailabilityRestricted(s) {
+  return (
+    s.availability_status === "sin_stock" ||
+    s.fulfillment_status === "insuficiente"
+  );
+}
+
+function availabilityBlock(s) {
+  const availability = s.availability_status || "por_confirmar";
+  const fulfillment = s.fulfillment_status || "por_confirmar";
+  const text = s.availability_text || "Por confirmar";
+  const restricted = isAvailabilityRestricted(s);
+
+  return `
+    <div class="availability-block">
+      <div>${esc(text)}</div>
+      <div class="availability-badges">
+        ${statusBadge(availability)}
+        ${statusBadge(fulfillment)}
+      </div>
+      ${
+        restricted
+          ? '<div class="restriction-note">No elegible para esta compra</div>'
+          : ""
+      }
+    </div>
+  `;
 }
 
 function money(v) {
@@ -71,8 +116,10 @@ function render(data) {
   q("#supplierRows").innerHTML = (data.ranking || []).map(row => {
     const s = row.supplier;
     const certs = (s.certifications || []).length ? s.certifications.join(", ") : "Por confirmar";
+    const restricted = isAvailabilityRestricted(s);
+
     return `
-      <tr>
+      <tr class="${restricted ? "supplier-restricted" : ""}">
         <td><strong>${row.rank}</strong></td>
         <td>
           <div class="supplier-name">${esc(s.supplier_name)}</div>
@@ -82,6 +129,7 @@ function render(data) {
           <div>${esc(s.product_match)}</div>
           ${statusBadge(s.product_match_status)}
         </td>
+        <td>${availabilityBlock(s)}</td>
         <td>${esc(s.city)}, ${esc(s.region)}</td>
         <td>
           ${esc(s.price_text)}
@@ -98,12 +146,13 @@ function render(data) {
 
   q("#details").innerHTML = (data.ranking || []).map(row => {
     const s = row.supplier;
+    const restricted = isAvailabilityRestricted(s);
     const sources = (s.sources || []).map(src =>
       `<a href="${esc(src.url)}" target="_blank" rel="noopener noreferrer">${esc(src.title || src.url)}</a>`
     ).join("") || `<span class="muted">Sin fuente vinculada en la extracción.</span>`;
 
     return `
-      <article class="card supplier-card">
+      <article class="card supplier-card ${restricted ? "supplier-restricted" : ""}">
         <span class="eyebrow">#${row.rank} · ${row.score}/100 · Confianza ${esc(s.confidence)}</span>
         <h3>${esc(s.supplier_name)}</h3>
         <div class="meta">${esc(s.city)}, ${esc(s.region)} · ${esc(s.supplier_type)}</div>
@@ -112,6 +161,11 @@ function render(data) {
           <strong>Coincidencia con la solicitud</strong>
           <div>${esc(s.product_match)}</div>
           ${statusBadge(s.product_match_status)}
+        </div>
+
+        <div class="availability-detail">
+          <strong>Disponibilidad para esta compra</strong>
+          ${availabilityBlock(s)}
         </div>
 
         <p>${esc(s.evidence_summary)}</p>
@@ -134,6 +188,10 @@ function render(data) {
         <details class="field-evidence">
           <summary>Ver evidencia por dato</summary>
           <div class="field-evidence-body">
+            ${evidenceLinks(
+              "Disponibilidad",
+              s.availability_sources
+            )}
             ${evidenceLinks("Precio", s.price_sources)}
             ${evidenceLinks("Crédito", s.credit_sources)}
             ${evidenceLinks("Entrega", s.delivery_sources)}

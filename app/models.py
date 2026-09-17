@@ -15,6 +15,11 @@ FulfillmentStatus = Literal[
     "insuficiente",
     "por_confirmar",
 ]
+PriceReviewStatus = Literal[
+    "not_required",
+    "requires_review",
+    "validated",
+]
 ConfidenceLevel = Literal["alta", "media", "baja"]
 
 
@@ -47,6 +52,8 @@ class SupplierResearch(BaseModel):
     estimated_total_delivered_cop: float | None = None
     price_status: EvidenceStatus = "por_confirmar"
     price_sources: list[Source] = Field(default_factory=list)
+    price_review_status: PriceReviewStatus = "not_required"
+    price_review_reason: str | None = None
 
     credit_terms: str = "Por confirmar"
     credit_days: int | None = None

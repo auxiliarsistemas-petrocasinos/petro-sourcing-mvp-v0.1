@@ -675,3 +675,269 @@ def test_insufficient_stock_supplier_does_not_score():
         rows["Proveedor utilizable"].rank
         < rows["Stock insuficiente"].rank
     )
+
+
+def test_single_extremely_low_price_is_not_flagged_for_review():
+    low = supplier(
+        "Precio bajo",
+        total=10_000,
+        price_status="confirmado",
+    )
+
+    ranking = rank_suppliers([low])
+
+    reviewed = ranking[0].supplier
+    assert reviewed.price_review_status == "not_required"
+    assert reviewed.price_review_reason is None
+
+
+def test_two_extremely_different_prices_are_not_flagged_for_review():
+    low = supplier(
+        "Precio muy bajo",
+        total=10_000,
+        price_status="confirmado",
+    )
+    normal = supplier(
+        "Precio normal",
+        total=100_000,
+        price_status="confirmado",
+    )
+
+    ranking = rank_suppliers([low, normal])
+
+    assert all(
+        row.supplier.price_review_status == "not_required"
+        for row in ranking
+    )
+
+
+def test_three_similar_prices_do_not_require_review():
+    suppliers = [
+        supplier("Proveedor A", total=95_000, price_status="confirmado"),
+        supplier("Proveedor B", total=100_000, price_status="confirmado"),
+        supplier("Proveedor C", total=105_000, price_status="confirmado"),
+    ]
+
+    ranking = rank_suppliers(suppliers)
+
+    assert all(
+        row.supplier.price_review_status == "not_required"
+        for row in ranking
+    )
+
+
+def test_extremely_low_price_requires_review_with_three_comparables():
+    suspicious = supplier(
+        "Precio sospechoso",
+        total=40_000,
+        price_status="confirmado",
+    )
+    normal = supplier(
+        "Precio normal",
+        total=100_000,
+        price_status="confirmado",
+    )
+    high = supplier(
+        "Precio alto",
+        total=105_000,
+        price_status="confirmado",
+    )
+
+    ranking = rank_suppliers([suspicious, normal, high])
+    rows = {
+        row.supplier.supplier_name: row
+        for row in ranking
+    }
+
+    reviewed = rows["Precio sospechoso"].supplier
+
+    assert reviewed.price_review_status == "requires_review"
+    assert (
+        reviewed.price_review_reason
+        == "extremely_low_vs_comparable_median"
+    )
+
+
+def test_exactly_half_of_median_does_not_require_review():
+    boundary = supplier(
+        "Precio frontera",
+        total=50_000,
+        price_status="confirmado",
+    )
+    normal = supplier(
+        "Precio normal",
+        total=100_000,
+        price_status="confirmado",
+    )
+    high = supplier(
+        "Precio alto",
+        total=105_000,
+        price_status="confirmado",
+    )
+
+    ranking = rank_suppliers([boundary, normal, high])
+    rows = {
+        row.supplier.supplier_name: row
+        for row in ranking
+    }
+
+    assert (
+        rows["Precio frontera"].supplier.price_review_status
+        == "not_required"
+    )
+
+
+def test_price_requiring_review_is_excluded_from_price_scoring():
+    suspicious = supplier(
+        "Precio sospechoso",
+        total=40_000,
+        price_status="confirmado",
+    )
+    normal = supplier(
+        "Precio normal",
+        total=100_000,
+        price_status="confirmado",
+    )
+    high = supplier(
+        "Precio alto",
+        total=105_000,
+        price_status="confirmado",
+    )
+
+    ranking = rank_suppliers([suspicious, normal, high])
+    rows = {
+        row.supplier.supplier_name: row
+        for row in ranking
+    }
+
+    assert rows["Precio sospechoso"].price_score == 0.0
+    assert rows["Precio normal"].price_score == 100.0
+    assert rows["Precio alto"].price_score == 95.2
+
+
+def test_unavailable_low_price_does_not_trigger_anomaly_detection():
+    unavailable = supplier(
+        "Sin stock",
+        total=10_000,
+        price_status="confirmado",
+    )
+    unavailable.availability_status = "sin_stock"
+
+    normal = supplier(
+        "Precio normal",
+        total=100_000,
+        price_status="confirmado",
+    )
+    high = supplier(
+        "Precio alto",
+        total=105_000,
+        price_status="confirmado",
+    )
+
+    ranking = rank_suppliers([unavailable, normal, high])
+
+    assert all(
+        row.supplier.price_review_status == "not_required"
+        for row in ranking
+    )
+
+
+def test_nonmatching_low_price_does_not_trigger_anomaly_detection():
+    wrong_product = supplier(
+        "Producto distinto",
+        total=10_000,
+        price_status="confirmado",
+    )
+    wrong_product.product_match_status = "estimado"
+
+    normal = supplier(
+        "Precio normal",
+        total=100_000,
+        price_status="confirmado",
+    )
+    high = supplier(
+        "Precio alto",
+        total=105_000,
+        price_status="confirmado",
+    )
+
+    ranking = rank_suppliers([wrong_product, normal, high])
+
+    assert all(
+        row.supplier.price_review_status == "not_required"
+        for row in ranking
+    )
+
+
+def test_validated_low_price_becomes_eligible_for_price_scoring():
+    validated = supplier(
+        "Precio validado",
+        total=40_000,
+        price_status="confirmado",
+    )
+    validated.price_review_status = "validated"
+
+    normal = supplier(
+        "Precio normal",
+        total=100_000,
+        price_status="confirmado",
+    )
+    high = supplier(
+        "Precio alto",
+        total=105_000,
+        price_status="confirmado",
+    )
+
+    ranking = rank_suppliers([validated, normal, high])
+    rows = {
+        row.supplier.supplier_name: row
+        for row in ranking
+    }
+
+    assert (
+        rows["Precio validado"].supplier.price_review_status
+        == "validated"
+    )
+    assert rows["Precio validado"].price_score == 100.0
+
+
+def test_different_price_basis_does_not_affect_anomaly_detection():
+    cheap_box = SupplierResearch(
+        supplier_name="Caja barata",
+        product_match="Producto solicitado",
+        product_match_status="confirmado",
+        price_amount_cop=40_000,
+        price_basis="caja",
+        price_base_unit="caja",
+        price_status="confirmado",
+        evidence_summary="Precio confirmado.",
+    )
+    normal_box = SupplierResearch(
+        supplier_name="Caja normal",
+        product_match="Producto solicitado",
+        product_match_status="confirmado",
+        price_amount_cop=100_000,
+        price_basis="caja",
+        price_base_unit="caja",
+        price_status="confirmado",
+        evidence_summary="Precio confirmado.",
+    )
+    unit_price = SupplierResearch(
+        supplier_name="Precio por unidad",
+        product_match="Producto solicitado",
+        product_match_status="confirmado",
+        price_amount_cop=5_000,
+        price_basis="unidad",
+        price_base_unit="unidad",
+        price_status="confirmado",
+        evidence_summary="Precio confirmado.",
+    )
+
+    ranking = rank_suppliers(
+        [cheap_box, normal_box, unit_price]
+    )
+
+    assert all(
+        row.supplier.price_review_status == "not_required"
+        for row in ranking
+    )

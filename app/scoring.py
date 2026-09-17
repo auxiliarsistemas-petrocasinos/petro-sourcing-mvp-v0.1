@@ -4,6 +4,10 @@ import unicodedata
 
 from .eligibility import is_supplier_eligible
 from .models import RankedSupplier, SupplierResearch
+from .price_review import (
+    flag_anomalously_low_prices,
+    reset_price_review_statuses,
+)
 
 WEIGHTS = {
     "price": 0.35,
@@ -86,6 +90,12 @@ def _apply_price_group(
     entries: list[tuple[SupplierResearch, float]],
     scores: dict[str, float],
 ) -> None:
+    entries = [
+        (supplier, value)
+        for supplier, value in entries
+        if supplier.price_review_status != "requires_review"
+    ]
+
     if len(entries) < 2:
         return
 
@@ -119,6 +129,8 @@ def _price_scores(
         for supplier in suppliers
     }
 
+    reset_price_review_statuses(suppliers)
+
     eligible = [
         supplier
         for supplier in suppliers
@@ -140,6 +152,8 @@ def _price_scores(
     # El costo total puesto en destino es la comparación
     # preferida cuando existen al menos dos alternativas.
     if len(delivered) >= 2:
+        flag_anomalously_low_prices(delivered)
+
         _apply_price_group(
             [
                 (supplier, value)
@@ -173,6 +187,8 @@ def _price_scores(
         )
 
     for entries in comparable_groups.values():
+        flag_anomalously_low_prices(entries)
+
         _apply_price_group(
             entries,
             scores,

@@ -2309,3 +2309,10 @@ details[open] > summary .details-chevron {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Price anomaly review */
+.status-requires_review {
+  border-color: rgba(222, 90, 27, 0.18);
+  background: var(--brand-orange-50);
+  color: #a64112;
+}

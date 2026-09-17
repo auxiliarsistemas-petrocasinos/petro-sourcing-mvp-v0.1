@@ -41,6 +41,7 @@ function humanStatus(value) {
     sin_stock: "Sin stock",
     suficiente: "Cantidad suficiente",
     insuficiente: "Cantidad insuficiente",
+    requires_review: "Precio por revisar",
   };
 
   return labels[value] || String(value || "Por confirmar").replaceAll("_", " ");
@@ -56,6 +57,7 @@ function statusBadge(value) {
     estimado: "clock-3",
     sin_stock: "circle-x",
     insuficiente: "circle-alert",
+    requires_review: "triangle-alert",
     por_confirmar: "circle-help",
   }[normalized] || "circle-help";
 
@@ -65,6 +67,14 @@ function statusBadge(value) {
       <span>${esc(humanStatus(normalized))}</span>
     </span>
   `;
+}
+
+function priceReviewBadge(supplier) {
+  if (supplier.price_review_status !== "requires_review") {
+    return "";
+  }
+
+  return statusBadge("requires_review");
 }
 
 function isAvailabilityRestricted(supplier) {
@@ -275,6 +285,7 @@ function render(data) {
             ${secondaryPriceDetails(supplier)}
             ${supplier.estimated_total_delivered_cop ? `<div class="table-secondary">${esc(money(supplier.estimated_total_delivered_cop))} total estimado</div>` : ""}
             ${statusBadge(supplier.price_status)}
+            ${priceReviewBadge(supplier)}
           </td>
           <td>${esc(supplier.credit_terms)}<br>${statusBadge(supplier.credit_status)}</td>
           <td>${esc(supplier.delivery_time)}<br>${statusBadge(supplier.delivery_status)}</td>
@@ -352,6 +363,7 @@ function render(data) {
                 supplier.price_status,
                 secondaryPriceDetails(supplier),
               )}
+              ${priceReviewBadge(supplier)}
             </div>
             <div class="commercial-item">
               ${icon("calendar-clock")}

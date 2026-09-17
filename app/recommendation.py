@@ -38,6 +38,14 @@ def _confirmed_credit_without_source(supplier) -> bool:
     )
 
 
+def _confirmed_certifications_without_source(supplier) -> bool:
+    return (
+        supplier.certifications_status == "confirmado"
+        and bool(supplier.certifications)
+        and not supplier.certifications_sources
+    )
+
+
 def build_recommendation_summary(
     result: ResearchResult,
     ranking: list[RankedSupplier],
@@ -125,6 +133,14 @@ def build_recommendation_summary(
             "una fuente registrada; antes de adjudicar "
             "se debe confirmar la evidencia de las condiciones "
             "de crédito."
+        )
+
+    if _confirmed_certifications_without_source(supplier):
+        parts.append(
+            f"las certificaciones reportadas por "
+            f"{supplier.supplier_name} no tienen "
+            "una fuente registrada; antes de adjudicar "
+            "se debe confirmar la evidencia de las certificaciones."
         )
 
     alternatives = confirmed_matches[1:3]
@@ -265,6 +281,12 @@ def build_pending_questions(
         pending.append(
             "Confirmar evidencia de las condiciones de crédito "
             f"reportadas por {name}."
+        )
+
+    if _confirmed_certifications_without_source(supplier):
+        pending.append(
+            "Confirmar evidencia de las certificaciones reportadas por "
+            f"{name}."
         )
 
     if quantity_known:

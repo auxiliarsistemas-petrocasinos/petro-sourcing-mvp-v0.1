@@ -968,3 +968,108 @@ def test_confirmed_credit_with_source_does_not_generate_evidence_warning():
         in item
         for item in pending
     )
+
+
+def test_summary_warns_when_confirmed_certifications_have_no_source():
+    top = supplier("Proveedor Uno")
+    top.certifications = ["ISO 9001"]
+    top.certifications_status = "confirmado"
+    top.certifications_sources = []
+
+    result = ResearchResult(
+        interpreted_request="Comprar guantes.",
+        product="guantes de nitrilo",
+        quantity="100 cajas",
+        destination="Bogotá",
+        suppliers=[top],
+        recommendation_summary="Texto previo.",
+    )
+
+    ranking = rank_suppliers(result.suppliers)
+
+    summary = build_recommendation_summary(
+        result,
+        ranking,
+    )
+
+    assert (
+        "las certificaciones reportadas por Proveedor Uno no tienen "
+        "una fuente registrada"
+        in summary
+    )
+
+
+def test_pending_questions_require_certification_evidence_when_missing_source():
+    from app.recommendation import build_pending_questions
+
+    top = supplier("Proveedor Uno")
+    top.certifications = ["ISO 9001"]
+    top.certifications_status = "confirmado"
+    top.certifications_sources = []
+
+    result = ResearchResult(
+        interpreted_request="Comprar guantes.",
+        product="guantes de nitrilo",
+        quantity="100 cajas",
+        destination="Bogotá",
+        suppliers=[top],
+        recommendation_summary="Resumen.",
+    )
+
+    ranking = rank_suppliers(result.suppliers)
+
+    pending = build_pending_questions(
+        result,
+        ranking,
+    )
+
+    assert (
+        "Confirmar evidencia de las certificaciones reportadas por "
+        "Proveedor Uno."
+        in pending
+    )
+
+
+def test_confirmed_certifications_with_source_do_not_generate_evidence_warning():
+    from app.recommendation import build_pending_questions
+
+    top = supplier("Proveedor Uno")
+    top.certifications = ["ISO 9001"]
+    top.certifications_status = "confirmado"
+    top.certifications_sources = [
+        Source(
+            title="Certificación ISO 9001",
+            url="https://example.com/certificacion",
+        )
+    ]
+
+    result = ResearchResult(
+        interpreted_request="Comprar guantes.",
+        product="guantes de nitrilo",
+        quantity="100 cajas",
+        destination="Bogotá",
+        suppliers=[top],
+        recommendation_summary="Resumen.",
+    )
+
+    ranking = rank_suppliers(result.suppliers)
+
+    summary = build_recommendation_summary(
+        result,
+        ranking,
+    )
+    pending = build_pending_questions(
+        result,
+        ranking,
+    )
+
+    assert (
+        "las certificaciones reportadas por Proveedor Uno no tienen "
+        "una fuente registrada"
+        not in summary
+    )
+    assert not any(
+        "evidencia de las certificaciones reportadas por Proveedor Uno"
+        in item
+        for item in pending
+    )

@@ -11,6 +11,15 @@ def _needs_evidence_reinforcement(supplier) -> bool:
     )
 
 
+def _confirmed_price_without_source(supplier) -> bool:
+    return (
+        supplier.price_status == "confirmado"
+        and bool(supplier.price_text)
+        and supplier.price_text != "Por confirmar"
+        and not supplier.price_sources
+    )
+
+
 def build_recommendation_summary(
     result: ResearchResult,
     ranking: list[RankedSupplier],
@@ -64,6 +73,14 @@ def build_recommendation_summary(
     ):
         parts.append(
             f"Precio reportado: {supplier.price_text}."
+        )
+
+    if _confirmed_price_without_source(supplier):
+        parts.append(
+            f"el precio reportado por "
+            f"{supplier.supplier_name} no tiene "
+            "una fuente registrada; antes de adjudicar "
+            "se debe confirmar la evidencia del precio."
         )
 
     if (
@@ -196,6 +213,11 @@ def build_pending_questions(
     if _needs_evidence_reinforcement(supplier):
         pending.append(
             f"Reforzar la evidencia de {name} antes de adjudicar."
+        )
+
+    if _confirmed_price_without_source(supplier):
+        pending.append(
+            f"Confirmar evidencia del precio reportado por {name}."
         )
 
     if quantity_known:

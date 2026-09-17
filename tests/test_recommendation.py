@@ -633,3 +633,114 @@ def test_pending_questions_require_stronger_evidence_for_weak_recommendation():
         and "Proveedor Uno" in item
         for item in pending
     )
+
+
+def test_summary_warns_when_confirmed_price_has_no_source():
+    top = supplier(
+        "Proveedor Uno",
+        price_text="$16.000 COP por caja",
+        price=16_000,
+        price_status="confirmado",
+    )
+    top.price_sources = []
+
+    result = ResearchResult(
+        interpreted_request="Comprar guantes.",
+        product="guantes de nitrilo",
+        quantity="100 cajas",
+        destination="Bogotá",
+        suppliers=[top],
+        recommendation_summary="Texto previo.",
+    )
+
+    ranking = rank_suppliers(result.suppliers)
+
+    summary = build_recommendation_summary(
+        result,
+        ranking,
+    )
+
+    assert "$16.000 COP por caja" in summary
+    assert (
+        "el precio reportado por Proveedor Uno no tiene "
+        "una fuente registrada"
+        in summary
+    )
+
+
+def test_pending_questions_require_price_evidence_when_missing_source():
+    from app.recommendation import build_pending_questions
+
+    top = supplier(
+        "Proveedor Uno",
+        price_text="$16.000 COP por caja",
+        price=16_000,
+        price_status="confirmado",
+    )
+    top.price_sources = []
+
+    result = ResearchResult(
+        interpreted_request="Comprar guantes.",
+        product="guantes de nitrilo",
+        quantity="100 cajas",
+        destination="Bogotá",
+        suppliers=[top],
+        recommendation_summary="Resumen.",
+    )
+
+    ranking = rank_suppliers(result.suppliers)
+
+    pending = build_pending_questions(
+        result,
+        ranking,
+    )
+
+    assert (
+        "Confirmar evidencia del precio reportado por "
+        "Proveedor Uno."
+        in pending
+    )
+
+
+def test_confirmed_price_with_source_does_not_generate_evidence_warning():
+    from app.recommendation import build_pending_questions
+
+    top = supplier(
+        "Proveedor Uno",
+        price_text="$16.000 COP por caja",
+        price=16_000,
+        price_status="confirmado",
+    )
+    top.price_sources = [
+        Source(
+            title="Precio publicado",
+            url="https://example.com/precio",
+        )
+    ]
+
+    result = ResearchResult(
+        interpreted_request="Comprar guantes.",
+        product="guantes de nitrilo",
+        quantity="100 cajas",
+        destination="Bogotá",
+        suppliers=[top],
+        recommendation_summary="Resumen.",
+    )
+
+    ranking = rank_suppliers(result.suppliers)
+
+    summary = build_recommendation_summary(
+        result,
+        ranking,
+    )
+    pending = build_pending_questions(
+        result,
+        ranking,
+    )
+
+    assert "no tiene una fuente registrada" not in summary
+    assert not any(
+        "evidencia del precio reportado por Proveedor Uno"
+        in item
+        for item in pending
+    )

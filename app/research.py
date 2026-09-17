@@ -289,6 +289,7 @@ Reglas:
 - `delivery_days` puede ser numérico si está confirmado o estimado de forma clara; si no, null.
 - No inventes URLs. Usa exclusivamente las URL entregadas en la sección FUENTES DISPONIBLES.
 - `sources` contiene las fuentes que sustentan la existencia, identidad o pertinencia general del proveedor.
+- `availability_sources` contiene únicamente fuentes que sustentan directamente la disponibilidad.
 - `price_sources` contiene únicamente fuentes que sustentan directamente el precio.
 - `credit_sources` contiene únicamente fuentes que sustentan directamente el plazo o condiciones de crédito.
 - `delivery_sources` contiene únicamente fuentes que sustentan directamente el plazo de entrega.
@@ -296,9 +297,9 @@ Reglas:
 - `capacity_sources` contiene únicamente fuentes que sustentan directamente la capacidad declarada del proveedor.
 - `contact_sources` contiene únicamente fuentes oficiales o confiables que sustentan teléfono, correo o sitio web del proveedor.
 - Todas esas fuentes deben provenir exclusivamente de FUENTES DISPONIBLES.
-- Toda URL incluida en `price_sources`, `credit_sources`, `delivery_sources`, `certifications_sources`, `capacity_sources` o `contact_sources` también debe estar incluida en `sources` del mismo proveedor.
+- Toda URL incluida en `availability_sources`, `price_sources`, `credit_sources`, `delivery_sources`, `certifications_sources`, `capacity_sources` o `contact_sources` también debe estar incluida en `sources` del mismo proveedor.
 - Nunca uses una fuente asociada a otro proveedor para respaldar datos de este proveedor.
-- Una fuente general del proveedor NO demuestra por sí sola precio, crédito, entrega ni certificaciones.
+- Una fuente general del proveedor NO demuestra por sí sola disponibilidad, precio, crédito, entrega ni certificaciones.
 - No agregues una URL a una lista de evidencia específica si esa fuente no sustenta realmente ese dato.
 - Mantén "Por confirmar" cuando falte información o evidencia específica.
 """

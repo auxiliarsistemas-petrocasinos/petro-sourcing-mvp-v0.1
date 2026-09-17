@@ -1865,3 +1865,26 @@ def test_specific_availability_source_preserves_out_of_stock_status():
     assert checked.availability_sources == [stock_source]
     assert checked.availability_text == "Producto agotado"
     assert checked.availability_status == "sin_stock"
+
+
+def test_extraction_prompt_defines_availability_sources():
+    assert (
+        "`availability_sources` contiene únicamente fuentes "
+        "que sustentan directamente la disponibilidad"
+        in research.EXTRACTION_PROMPT
+    )
+
+
+def test_extraction_prompt_requires_availability_source_to_belong_to_supplier_sources():
+    assert (
+        "`availability_sources`, `price_sources`"
+        in research.EXTRACTION_PROMPT
+    )
+
+
+def test_extraction_prompt_rejects_general_source_as_availability_evidence():
+    assert (
+        "Una fuente general del proveedor NO demuestra por sí sola "
+        "disponibilidad"
+        in research.EXTRACTION_PROMPT
+    )

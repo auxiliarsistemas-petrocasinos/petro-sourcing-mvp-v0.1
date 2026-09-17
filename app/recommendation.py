@@ -55,6 +55,16 @@ def _available_without_source(supplier) -> bool:
     )
 
 
+def _confirmed_capacity_without_source(supplier) -> bool:
+    return (
+        supplier.fulfillment_status == "suficiente"
+        and supplier.capacity_status == "confirmado"
+        and bool(supplier.capacity)
+        and supplier.capacity != "Por confirmar"
+        and not supplier.capacity_sources
+    )
+
+
 def build_recommendation_summary(
     result: ResearchResult,
     ranking: list[RankedSupplier],
@@ -158,6 +168,14 @@ def build_recommendation_summary(
             f"{supplier.supplier_name} no tiene "
             "una fuente registrada; antes de adjudicar "
             "se debe confirmar la evidencia de disponibilidad."
+        )
+
+    if _confirmed_capacity_without_source(supplier):
+        parts.append(
+            f"la capacidad reportada por "
+            f"{supplier.supplier_name} no tiene "
+            "una fuente registrada; antes de adjudicar "
+            "se debe confirmar la evidencia de capacidad."
         )
 
     alternatives = confirmed_matches[1:3]
@@ -309,6 +327,12 @@ def build_pending_questions(
     if _available_without_source(supplier):
         pending.append(
             "Confirmar evidencia de la disponibilidad reportada por "
+            f"{name}."
+        )
+
+    if _confirmed_capacity_without_source(supplier):
+        pending.append(
+            "Confirmar evidencia de la capacidad reportada por "
             f"{name}."
         )
 

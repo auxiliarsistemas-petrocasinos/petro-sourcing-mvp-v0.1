@@ -1178,3 +1178,117 @@ def test_available_stock_with_source_does_not_generate_evidence_warning():
         in item
         for item in pending
     )
+
+
+def test_summary_warns_when_confirmed_capacity_has_no_source():
+    top = supplier(
+        "Proveedor Uno",
+        capacity_status="confirmado",
+    )
+    top.capacity = "Puede suministrar 500 cajas"
+    top.fulfillment_status = "suficiente"
+    top.capacity_sources = []
+
+    result = ResearchResult(
+        interpreted_request="Comprar guantes.",
+        product="guantes de nitrilo",
+        quantity="100 cajas",
+        destination="Bogotá",
+        suppliers=[top],
+        recommendation_summary="Texto previo.",
+    )
+
+    ranking = rank_suppliers(result.suppliers)
+
+    summary = build_recommendation_summary(
+        result,
+        ranking,
+    )
+
+    assert (
+        "la capacidad reportada por Proveedor Uno no tiene "
+        "una fuente registrada"
+        in summary
+    )
+
+
+def test_pending_questions_require_capacity_evidence_when_missing_source():
+    from app.recommendation import build_pending_questions
+
+    top = supplier(
+        "Proveedor Uno",
+        capacity_status="confirmado",
+    )
+    top.capacity = "Puede suministrar 500 cajas"
+    top.fulfillment_status = "suficiente"
+    top.capacity_sources = []
+
+    result = ResearchResult(
+        interpreted_request="Comprar guantes.",
+        product="guantes de nitrilo",
+        quantity="100 cajas",
+        destination="Bogotá",
+        suppliers=[top],
+        recommendation_summary="Resumen.",
+    )
+
+    ranking = rank_suppliers(result.suppliers)
+
+    pending = build_pending_questions(
+        result,
+        ranking,
+    )
+
+    assert (
+        "Confirmar evidencia de la capacidad reportada por "
+        "Proveedor Uno."
+        in pending
+    )
+
+
+def test_confirmed_capacity_with_source_does_not_generate_evidence_warning():
+    from app.recommendation import build_pending_questions
+
+    top = supplier(
+        "Proveedor Uno",
+        capacity_status="confirmado",
+    )
+    top.capacity = "Puede suministrar 500 cajas"
+    top.fulfillment_status = "suficiente"
+    top.capacity_sources = [
+        Source(
+            title="Capacidad publicada",
+            url="https://example.com/capacidad",
+        )
+    ]
+
+    result = ResearchResult(
+        interpreted_request="Comprar guantes.",
+        product="guantes de nitrilo",
+        quantity="100 cajas",
+        destination="Bogotá",
+        suppliers=[top],
+        recommendation_summary="Resumen.",
+    )
+
+    ranking = rank_suppliers(result.suppliers)
+
+    summary = build_recommendation_summary(
+        result,
+        ranking,
+    )
+    pending = build_pending_questions(
+        result,
+        ranking,
+    )
+
+    assert (
+        "la capacidad reportada por Proveedor Uno no tiene "
+        "una fuente registrada"
+        not in summary
+    )
+    assert not any(
+        "evidencia de la capacidad reportada por Proveedor Uno"
+        in item
+        for item in pending
+    )

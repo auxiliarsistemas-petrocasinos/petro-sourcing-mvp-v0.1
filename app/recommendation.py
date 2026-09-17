@@ -46,6 +46,15 @@ def _confirmed_certifications_without_source(supplier) -> bool:
     )
 
 
+def _available_without_source(supplier) -> bool:
+    return (
+        supplier.availability_status == "disponible"
+        and bool(supplier.availability_text)
+        and supplier.availability_text != "Por confirmar"
+        and not supplier.availability_sources
+    )
+
+
 def build_recommendation_summary(
     result: ResearchResult,
     ranking: list[RankedSupplier],
@@ -141,6 +150,14 @@ def build_recommendation_summary(
             f"{supplier.supplier_name} no tienen "
             "una fuente registrada; antes de adjudicar "
             "se debe confirmar la evidencia de las certificaciones."
+        )
+
+    if _available_without_source(supplier):
+        parts.append(
+            f"la disponibilidad reportada por "
+            f"{supplier.supplier_name} no tiene "
+            "una fuente registrada; antes de adjudicar "
+            "se debe confirmar la evidencia de disponibilidad."
         )
 
     alternatives = confirmed_matches[1:3]
@@ -286,6 +303,12 @@ def build_pending_questions(
     if _confirmed_certifications_without_source(supplier):
         pending.append(
             "Confirmar evidencia de las certificaciones reportadas por "
+            f"{name}."
+        )
+
+    if _available_without_source(supplier):
+        pending.append(
+            "Confirmar evidencia de la disponibilidad reportada por "
             f"{name}."
         )
 

@@ -1073,3 +1073,108 @@ def test_confirmed_certifications_with_source_do_not_generate_evidence_warning()
         in item
         for item in pending
     )
+
+
+def test_summary_warns_when_available_stock_has_no_source():
+    top = supplier("Proveedor Uno")
+    top.availability_text = "Disponible para despacho inmediato"
+    top.availability_status = "disponible"
+    top.availability_sources = []
+
+    result = ResearchResult(
+        interpreted_request="Comprar guantes.",
+        product="guantes de nitrilo",
+        quantity="100 cajas",
+        destination="Bogotá",
+        suppliers=[top],
+        recommendation_summary="Texto previo.",
+    )
+
+    ranking = rank_suppliers(result.suppliers)
+
+    summary = build_recommendation_summary(
+        result,
+        ranking,
+    )
+
+    assert (
+        "la disponibilidad reportada por Proveedor Uno no tiene "
+        "una fuente registrada"
+        in summary
+    )
+
+
+def test_pending_questions_require_availability_evidence_when_missing_source():
+    from app.recommendation import build_pending_questions
+
+    top = supplier("Proveedor Uno")
+    top.availability_text = "Disponible para despacho inmediato"
+    top.availability_status = "disponible"
+    top.availability_sources = []
+
+    result = ResearchResult(
+        interpreted_request="Comprar guantes.",
+        product="guantes de nitrilo",
+        quantity="100 cajas",
+        destination="Bogotá",
+        suppliers=[top],
+        recommendation_summary="Resumen.",
+    )
+
+    ranking = rank_suppliers(result.suppliers)
+
+    pending = build_pending_questions(
+        result,
+        ranking,
+    )
+
+    assert (
+        "Confirmar evidencia de la disponibilidad reportada por "
+        "Proveedor Uno."
+        in pending
+    )
+
+
+def test_available_stock_with_source_does_not_generate_evidence_warning():
+    from app.recommendation import build_pending_questions
+
+    top = supplier("Proveedor Uno")
+    top.availability_text = "Disponible para despacho inmediato"
+    top.availability_status = "disponible"
+    top.availability_sources = [
+        Source(
+            title="Disponibilidad publicada",
+            url="https://example.com/disponibilidad",
+        )
+    ]
+
+    result = ResearchResult(
+        interpreted_request="Comprar guantes.",
+        product="guantes de nitrilo",
+        quantity="100 cajas",
+        destination="Bogotá",
+        suppliers=[top],
+        recommendation_summary="Resumen.",
+    )
+
+    ranking = rank_suppliers(result.suppliers)
+
+    summary = build_recommendation_summary(
+        result,
+        ranking,
+    )
+    pending = build_pending_questions(
+        result,
+        ranking,
+    )
+
+    assert (
+        "la disponibilidad reportada por Proveedor Uno no tiene "
+        "una fuente registrada"
+        not in summary
+    )
+    assert not any(
+        "evidencia de la disponibilidad reportada por Proveedor Uno"
+        in item
+        for item in pending
+    )

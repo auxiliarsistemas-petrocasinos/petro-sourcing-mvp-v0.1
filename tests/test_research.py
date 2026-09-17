@@ -1674,3 +1674,107 @@ def test_purchase_intent_rejects_general_product_question():
         match="solo atiende solicitudes de abastecimiento",
     ):
         research._validate_purchase_intent(intent)
+
+
+def test_missing_price_evidence_clears_structured_price_fields():
+    general = Source(
+        title="Proveedor oficial",
+        url="https://proveedor.example/",
+    )
+
+    supplier = SupplierResearch(
+        supplier_name="Proveedor",
+        product_match="Guante nitrilo talla M",
+        product_match_status="confirmado",
+        price_text="$15.000 COP caja x100",
+        price_amount_cop=15_000,
+        price_basis="caja",
+        price_basis_quantity=100,
+        price_base_unit="unidad",
+        price_cop_per_unit=150,
+        price_status="confirmado",
+        evidence_summary="Precio sin fuente específica.",
+        confidence="alta",
+        sources=[general],
+    )
+
+    result = ResearchResult(
+        interpreted_request="Comprar guantes",
+        product="Guantes",
+        quantity="100 cajas",
+        destination="Bogotá",
+        suppliers=[supplier],
+        recommendation_summary="Resumen",
+    )
+
+    validated = research._enforce_source_evidence(
+        result,
+        [
+            {
+                "title": "Proveedor oficial",
+                "url": "https://proveedor.example/",
+            }
+        ],
+    )
+
+    checked = validated.suppliers[0]
+
+    assert checked.price_status == "por_confirmar"
+    assert checked.price_text == "Por confirmar"
+    assert checked.price_amount_cop is None
+    assert checked.price_basis == "Por confirmar"
+    assert checked.price_basis_quantity is None
+    assert checked.price_base_unit == "Por confirmar"
+    assert checked.price_cop_per_unit is None
+
+
+def test_price_evidence_preserves_structured_price_fields():
+    price_source = Source(
+        title="Ficha de producto",
+        url="https://proveedor.example/guantes",
+    )
+
+    supplier = SupplierResearch(
+        supplier_name="Proveedor",
+        product_match="Guante nitrilo talla M",
+        product_match_status="confirmado",
+        price_text="$15.000 COP caja x100",
+        price_amount_cop=15_000,
+        price_basis="caja",
+        price_basis_quantity=100,
+        price_base_unit="unidad",
+        price_cop_per_unit=150,
+        price_status="confirmado",
+        evidence_summary="Precio sustentado.",
+        confidence="alta",
+        sources=[price_source],
+        price_sources=[price_source],
+    )
+
+    result = ResearchResult(
+        interpreted_request="Comprar guantes",
+        product="Guantes",
+        quantity="100 cajas",
+        destination="Bogotá",
+        suppliers=[supplier],
+        recommendation_summary="Resumen",
+    )
+
+    validated = research._enforce_source_evidence(
+        result,
+        [
+            {
+                "title": "Ficha de producto",
+                "url": "https://proveedor.example/guantes",
+            }
+        ],
+    )
+
+    checked = validated.suppliers[0]
+
+    assert checked.price_status == "confirmado"
+    assert checked.price_amount_cop == 15_000
+    assert checked.price_basis == "caja"
+    assert checked.price_basis_quantity == 100
+    assert checked.price_base_unit == "unidad"
+    assert checked.price_cop_per_unit == 150

@@ -49,16 +49,22 @@ def test_cheapest_known_price_gets_highest_price_score():
     assert rows["Proveedor caro"].price_score == 80.0
 
 
-def test_missing_price_does_not_receive_artificial_price_points():
-    known = supplier("Precio conocido", total=100_000, price_status="confirmado")
+def test_single_known_price_does_not_receive_competitiveness_score():
+    known = supplier(
+        "Precio conocido",
+        total=100_000,
+        price_status="confirmado",
+    )
     unknown = supplier("Precio desconocido")
 
     ranking = rank_suppliers([unknown, known])
-    rows = {row.supplier.supplier_name: row for row in ranking}
+    rows = {
+        row.supplier.supplier_name: row
+        for row in ranking
+    }
 
-    assert rows["Precio conocido"].price_score == 100.0
+    assert rows["Precio conocido"].price_score == 0.0
     assert rows["Precio desconocido"].price_score == 0.0
-    assert rows["Precio conocido"].rank < rows["Precio desconocido"].rank
 
 
 def test_all_missing_prices_receive_zero_price_score():
@@ -274,17 +280,19 @@ def test_unconfirmed_price_does_not_set_price_benchmark():
     ranking = rank_suppliers([confirmed, unconfirmed])
     rows = {row.supplier.supplier_name: row for row in ranking}
 
-    assert rows["Precio confirmado"].price_score == 100.0
+    assert rows["Precio confirmado"].price_score == 0.0
     assert rows["Precio por confirmar"].price_score == 0.0
 
 
-def test_unit_prices_are_used_when_delivered_totals_are_missing():
+def test_same_price_basis_is_compared_when_totals_are_missing():
     cheap = SupplierResearch(
         supplier_name="Proveedor exacto barato",
         product_match="Guantes nitrilo talla M sin polvo",
         product_match_status="confirmado",
         price_text="$16.000 COP por caja",
-        price_cop_per_unit=16_000,
+        price_amount_cop=16_000,
+        price_basis="caja",
+        price_base_unit="caja",
         price_status="confirmado",
         evidence_summary="Precio confirmado.",
     )
@@ -294,7 +302,9 @@ def test_unit_prices_are_used_when_delivered_totals_are_missing():
         product_match="Guantes nitrilo talla M sin polvo",
         product_match_status="confirmado",
         price_text="$19.150 COP por caja",
-        price_cop_per_unit=19_150,
+        price_amount_cop=19_150,
+        price_basis="caja",
+        price_base_unit="caja",
         price_status="confirmado",
         evidence_summary="Precio confirmado.",
     )
@@ -336,7 +346,7 @@ def test_nonmatching_product_price_does_not_set_price_benchmark():
         for row in ranking
     }
 
-    assert rows["Talla M"].price_score == 100.0
+    assert rows["Talla M"].price_score == 0.0
     assert rows["Talla S"].price_score == 0.0
 
 
@@ -400,7 +410,7 @@ def test_marketplace_does_not_score_or_set_price_benchmark():
     assert rows["Marketplace"].score == 0.0
     assert rows["Marketplace"].price_score == 0.0
 
-    assert rows["Proveedor directo"].price_score == 100.0
+    assert rows["Proveedor directo"].price_score == 0.0
     assert (
         rows["Proveedor directo"].rank
         < rows["Marketplace"].rank
@@ -517,3 +527,65 @@ def test_estimated_product_match_receives_zero_total_score():
     assert row.delivery_score == 0.0
     assert row.evidence_score == 0.0
     assert row.score == 0.0
+
+
+def test_package_sizes_are_normalized_before_price_scoring():
+    box_50 = supplier(
+        "Caja x50",
+        price_status="confirmado",
+    )
+    box_50.price_text = "$10.000 COP caja x50"
+    box_50.price_amount_cop = 10_000
+    box_50.price_basis = "caja"
+    box_50.price_basis_quantity = 50
+    box_50.price_base_unit = "unidad"
+    box_50.price_cop_per_unit = 10_000
+
+    box_100 = supplier(
+        "Caja x100",
+        price_status="confirmado",
+    )
+    box_100.price_text = "$15.000 COP caja x100"
+    box_100.price_amount_cop = 15_000
+    box_100.price_basis = "caja"
+    box_100.price_basis_quantity = 100
+    box_100.price_base_unit = "unidad"
+    box_100.price_cop_per_unit = 15_000
+
+    ranking = rank_suppliers([box_50, box_100])
+    rows = {
+        row.supplier.supplier_name: row
+        for row in ranking
+    }
+
+    assert rows["Caja x100"].price_score == 100.0
+    assert rows["Caja x50"].price_score == 75.0
+
+
+def test_incompatible_price_base_units_are_not_compared():
+    units = supplier(
+        "Precio por unidad",
+        price_status="confirmado",
+    )
+    units.price_amount_cop = 10_000
+    units.price_basis = "unidad"
+    units.price_base_unit = "unidad"
+    units.price_cop_per_unit = 10_000
+
+    pairs = supplier(
+        "Precio por par",
+        price_status="confirmado",
+    )
+    pairs.price_amount_cop = 8_000
+    pairs.price_basis = "par"
+    pairs.price_base_unit = "par"
+    pairs.price_cop_per_unit = 8_000
+
+    ranking = rank_suppliers([units, pairs])
+    rows = {
+        row.supplier.supplier_name: row
+        for row in ranking
+    }
+
+    assert rows["Precio por unidad"].price_score == 0.0
+    assert rows["Precio por par"].price_score == 0.0

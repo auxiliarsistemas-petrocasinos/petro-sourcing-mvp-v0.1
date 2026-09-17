@@ -221,7 +221,12 @@ Reglas obligatorias:
 5. Puedes usar directorios/marketplaces como evidencia secundaria, pero indícalo.
 6. Busca idealmente entre 5 y 10 proveedores si el mercado lo permite.
 7. Para precio, distingue precio del producto de flete/costo puesto en destino.
+   Identifica también la presentación exacta a la que corresponde el precio:
+   unidad, caja, paquete, par, kg, litro, metro u otra base. Cuando una presentación
+   contenga múltiples unidades, conserva explícitamente esa cantidad, por ejemplo
+   "caja x100 unidades".
 8. Si no hay precio público, escribe 'Por confirmar'; no fabriques un valor.
+   No asumas moneda, presentación ni cantidad contenida cuando la fuente sea ambigua.
 9. Para crédito, evalúa únicamente crédito comercial otorgado directamente por el proveedor.
    Solo afirma días/plazo cuando exista evidencia explícita de pago diferido al proveedor,
    por ejemplo 30, 45 o 60 días contra factura. Tarjetas de crédito, cuotas de pasarelas,
@@ -249,8 +254,26 @@ Reglas:
 - `confidence` solo puede ser "alta", "media" o "baja".
 - `estimated_total_delivered_cop` solo debe tener un número si el informe ofrece
   un total puesto en destino o una estimación razonablemente sustentada. Si no, null.
-- `price_cop_per_unit` solo si el precio puede expresarse razonablemente en COP por
-  la unidad relevante; si no, null.
+- Para precios, conserva la presentación original y normaliza únicamente cuando
+  la evidencia sea explícita.
+- `price_amount_cop` es el valor numérico en COP correspondiente exactamente a
+  `price_basis`. Ejemplo: "$15.000 COP caja x100" -> 15000.
+- `price_basis` describe aquello que compra ese valor: por ejemplo "caja",
+  "paquete", "unidad", "par", "kg", "litro" o "metro".
+- `price_basis_quantity` es la cantidad de `price_base_unit` contenida en esa
+  presentación. Ejemplo: caja x100 unidades -> 100. Si no está explícita, null.
+- `price_base_unit` es la unidad canónica que permite comparar presentaciones.
+  Usa términos simples y consistentes como "unidad", "par", "kg", "litro" o
+  "metro". Para una caja x100 guantes, usa "unidad".
+- Si `price_basis` y `price_base_unit` son la misma medida y el precio es directo
+  por esa medida, `price_basis_quantity` puede ser null.
+- `price_cop_per_unit` es el precio normalizado en COP por `price_base_unit`
+  únicamente cuando pueda calcularse de forma inequívoca. Ejemplo:
+  15000 COP por caja x100 unidades -> 150 COP por unidad. Si no, null.
+- No conviertas monedas extranjeras a COP ni interpretes un símbolo "$" ambiguo
+  como COP salvo que la fuente permita identificar razonablemente la moneda.
+- No inventes contenido de empaque. Si una fuente dice solo "$15.000 por caja"
+  sin indicar cuántas unidades contiene, no inventes `price_basis_quantity`.
 - `credit_days` solo si aparece explícitamente un plazo de crédito comercial otorgado
   directamente por el proveedor; si no, null.
 - Tarjetas de crédito, cuotas, pasarelas de pago, marketplaces y financiación de terceros
@@ -704,6 +727,10 @@ def _enforce_source_evidence(
             supplier.contact_sources = []
 
             supplier.price_text = "Por confirmar"
+            supplier.price_amount_cop = None
+            supplier.price_basis = "Por confirmar"
+            supplier.price_basis_quantity = None
+            supplier.price_base_unit = "Por confirmar"
             supplier.price_cop_per_unit = None
             supplier.estimated_total_delivered_cop = None
             supplier.price_status = "por_confirmar"
@@ -730,6 +757,10 @@ def _enforce_source_evidence(
 
         if not supplier.price_sources:
             supplier.price_text = "Por confirmar"
+            supplier.price_amount_cop = None
+            supplier.price_basis = "Por confirmar"
+            supplier.price_basis_quantity = None
+            supplier.price_base_unit = "Por confirmar"
             supplier.price_cop_per_unit = None
             supplier.estimated_total_delivered_cop = None
             supplier.price_status = "por_confirmar"

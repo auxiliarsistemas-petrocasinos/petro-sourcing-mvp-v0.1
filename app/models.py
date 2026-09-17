@@ -24,6 +24,10 @@ class SupplierResearch(BaseModel):
     product_match_status: EvidenceStatus = "por_confirmar"
 
     price_text: str = "Por confirmar"
+    price_amount_cop: float | None = None
+    price_basis: str = "Por confirmar"
+    price_basis_quantity: float | None = None
+    price_base_unit: str = "Por confirmar"
     price_cop_per_unit: float | None = None
     estimated_total_delivered_cop: float | None = None
     price_status: EvidenceStatus = "por_confirmar"

@@ -24,9 +24,101 @@ def _apply_status_multiplier(score: float, status: str) -> float:
     return score * STATUS_MULTIPLIERS.get(status, 0.0)
 
 
+UNKNOWN_PRICE_LABELS = {
+    "",
+    "por confirmar",
+    "n/a",
+    "none",
+}
+
+
+def _normalize_price_label(value: str) -> str:
+    normalized = unicodedata.normalize(
+        "NFKD",
+        (value or "").strip().lower(),
+    )
+    return "".join(
+        char
+        for char in normalized
+        if not unicodedata.combining(char)
+    )
+
+
+def _structured_price_value(
+    supplier: SupplierResearch,
+) -> tuple[str, float] | None:
+    amount = supplier.price_amount_cop
+
+    if amount is None or amount <= 0:
+        return None
+
+    basis = _normalize_price_label(
+        supplier.price_basis
+    )
+    base_unit = _normalize_price_label(
+        supplier.price_base_unit
+    )
+
+    if base_unit in UNKNOWN_PRICE_LABELS:
+        return None
+
+    quantity = supplier.price_basis_quantity
+
+    if quantity is not None:
+        if quantity <= 0:
+            return None
+
+        return (
+            base_unit,
+            amount / quantity,
+        )
+
+    if basis == base_unit:
+        return (
+            base_unit,
+            amount,
+        )
+
+    return None
+
+
+def _apply_price_group(
+    entries: list[tuple[SupplierResearch, float]],
+    scores: dict[str, float],
+) -> None:
+    if len(entries) < 2:
+        return
+
+    minimum = min(
+        value
+        for _, value in entries
+    )
+
+    for supplier, value in entries:
+        base_score = max(
+            20.0,
+            min(
+                100.0,
+                100.0 * minimum / value,
+            ),
+        )
+
+        scores[supplier.supplier_name] = (
+            _apply_status_multiplier(
+                base_score,
+                supplier.price_status,
+            )
+        )
+
+
 def _price_scores(
     suppliers: list[SupplierResearch],
 ) -> dict[str, float]:
+    scores = {
+        supplier.supplier_name: 0.0
+        for supplier in suppliers
+    }
+
     eligible = [
         supplier
         for supplier in suppliers
@@ -35,75 +127,55 @@ def _price_scores(
         and supplier.price_status != "por_confirmar"
     ]
 
-    delivered_totals = [
-        supplier.estimated_total_delivered_cop
+    delivered = [
+        (
+            supplier,
+            supplier.estimated_total_delivered_cop,
+        )
         for supplier in eligible
         if supplier.estimated_total_delivered_cop is not None
         and supplier.estimated_total_delivered_cop > 0
     ]
 
-    unit_prices = [
-        supplier.price_cop_per_unit
-        for supplier in eligible
-        if supplier.price_cop_per_unit is not None
-        and supplier.price_cop_per_unit > 0
-    ]
+    # El costo total puesto en destino es la comparación
+    # preferida cuando existen al menos dos alternativas.
+    if len(delivered) >= 2:
+        _apply_price_group(
+            [
+                (supplier, value)
+                for supplier, value in delivered
+                if value is not None
+            ],
+            scores,
+        )
+        return scores
 
-    if len(delivered_totals) >= 2:
-        def price_value(
-            supplier: SupplierResearch,
-        ) -> float | None:
-            return supplier.estimated_total_delivered_cop
+    comparable_groups: dict[
+        str,
+        list[tuple[SupplierResearch, float]],
+    ] = {}
 
-        available = delivered_totals
-    elif unit_prices:
-        def price_value(
-            supplier: SupplierResearch,
-        ) -> float | None:
-            return supplier.price_cop_per_unit
-
-        available = unit_prices
-    elif delivered_totals:
-        def price_value(
-            supplier: SupplierResearch,
-        ) -> float | None:
-            return supplier.estimated_total_delivered_cop
-
-        available = delivered_totals
-    else:
-        return {
-            supplier.supplier_name: 0.0
-            for supplier in suppliers
-        }
-
-    minimum = min(available)
-    scores: dict[str, float] = {}
-
-    for supplier in suppliers:
-        if (
-            not is_supplier_eligible(supplier)
-            or supplier.product_match_status != "confirmado"
-            or supplier.price_status == "por_confirmar"
-        ):
-            scores[supplier.supplier_name] = 0.0
-            continue
-
-        value = price_value(supplier)
-
-        if value is None or value <= 0:
-            scores[supplier.supplier_name] = 0.0
-            continue
-
-        base_score = max(
-            20.0,
-            min(100.0, 100.0 * minimum / value),
+    for supplier in eligible:
+        normalized = _structured_price_value(
+            supplier
         )
 
-        scores[supplier.supplier_name] = (
-            _apply_status_multiplier(
-                base_score,
-                supplier.price_status,
-            )
+        if normalized is None:
+            continue
+
+        base_unit, value = normalized
+
+        comparable_groups.setdefault(
+            base_unit,
+            [],
+        ).append(
+            (supplier, value)
+        )
+
+    for entries in comparable_groups.values():
+        _apply_price_group(
+            entries,
+            scores,
         )
 
     return scores
@@ -308,7 +380,14 @@ def rank_suppliers(suppliers: list[SupplierResearch]) -> list[RankedSupplier]:
             )
         )
 
-    rows.sort(key=lambda row: row.score, reverse=True)
+    rows.sort(
+        key=lambda row: (
+            row.score,
+            is_supplier_eligible(row.supplier),
+            row.supplier.product_match_status == "confirmado",
+        ),
+        reverse=True,
+    )
 
     for index, row in enumerate(rows, start=1):
         row.rank = index

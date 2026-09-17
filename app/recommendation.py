@@ -29,6 +29,15 @@ def _confirmed_delivery_without_source(supplier) -> bool:
     )
 
 
+def _confirmed_credit_without_source(supplier) -> bool:
+    return (
+        supplier.credit_status == "confirmado"
+        and bool(supplier.credit_terms)
+        and supplier.credit_terms != "Por confirmar"
+        and not supplier.credit_sources
+    )
+
+
 def build_recommendation_summary(
     result: ResearchResult,
     ranking: list[RankedSupplier],
@@ -107,6 +116,15 @@ def build_recommendation_summary(
             f"{supplier.supplier_name} no tiene "
             "una fuente registrada; antes de adjudicar "
             "se debe confirmar la evidencia del tiempo de entrega."
+        )
+
+    if _confirmed_credit_without_source(supplier):
+        parts.append(
+            f"el crédito reportado por "
+            f"{supplier.supplier_name} no tiene "
+            "una fuente registrada; antes de adjudicar "
+            "se debe confirmar la evidencia de las condiciones "
+            "de crédito."
         )
 
     alternatives = confirmed_matches[1:3]
@@ -241,6 +259,12 @@ def build_pending_questions(
         pending.append(
             "Confirmar evidencia del tiempo de entrega reportado por "
             f"{name}."
+        )
+
+    if _confirmed_credit_without_source(supplier):
+        pending.append(
+            "Confirmar evidencia de las condiciones de crédito "
+            f"reportadas por {name}."
         )
 
     if quantity_known:

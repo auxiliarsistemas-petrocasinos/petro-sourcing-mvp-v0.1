@@ -772,3 +772,162 @@ def test_unvalidated_price_has_no_validation_timestamp():
 
     assert supplier.price_review_status == "not_required"
     assert supplier.price_review_validated_at is None
+
+
+def test_reopening_validated_price_clears_validation_and_recalculates(
+    monkeypatch,
+):
+    from app import main
+    from app.models import ResearchResult, SupplierResearch
+    from app.scoring import rank_suppliers
+
+    suspicious = SupplierResearch(
+        supplier_name="Precio sospechoso",
+        product_match="Producto solicitado",
+        product_match_status="confirmado",
+        estimated_total_delivered_cop=40_000,
+        price_status="confirmado",
+        evidence_summary="Precio confirmado.",
+    )
+    normal = SupplierResearch(
+        supplier_name="Precio normal",
+        product_match="Producto solicitado",
+        product_match_status="confirmado",
+        estimated_total_delivered_cop=100_000,
+        price_status="confirmado",
+        evidence_summary="Precio confirmado.",
+    )
+    high = SupplierResearch(
+        supplier_name="Precio alto",
+        product_match="Producto solicitado",
+        product_match_status="confirmado",
+        estimated_total_delivered_cop=105_000,
+        price_status="confirmado",
+        evidence_summary="Precio confirmado.",
+    )
+
+    result = ResearchResult(
+        interpreted_request="Comprar producto.",
+        product="Producto",
+        quantity="1",
+        destination="Bogotá",
+        suppliers=[suspicious, normal, high],
+        recommendation_summary="",
+        pending_questions=[],
+    )
+
+    ranking = rank_suppliers(result.suppliers)
+
+    assert suspicious.price_review_status == "requires_review"
+
+    stored_item = {
+        "id": 92,
+        "created_at": "2026-09-17T16:00:00+00:00",
+        "query": "Necesito comprar un producto.",
+        "result": {
+            "result": result.model_dump(),
+            "ranking": [
+                row.model_dump()
+                for row in ranking
+            ],
+            "source_count": 0,
+            "global_sources": [],
+            "raw_report": "",
+        },
+    }
+
+    def fake_get_research(research_id):
+        if research_id != 92:
+            return None
+        return stored_item
+
+    def fake_update_research(research_id, payload):
+        assert research_id == 92
+        stored_item["result"] = payload
+        return True
+
+    monkeypatch.setattr(
+        main,
+        "get_research",
+        fake_get_research,
+    )
+    monkeypatch.setattr(
+        main,
+        "update_research",
+        fake_update_research,
+    )
+
+    validated = client.patch(
+        (
+            "/api/research/92/suppliers/"
+            "Precio%20sospechoso/price-review"
+        ),
+        json={"status": "validated"},
+    )
+
+    assert validated.status_code == 200
+
+    validated_supplier = next(
+        supplier
+        for supplier in validated.json()["result"]["suppliers"]
+        if supplier["supplier_name"] == "Precio sospechoso"
+    )
+
+    assert validated_supplier["price_review_status"] == "validated"
+    assert validated_supplier["price_review_validated_at"] is not None
+
+    reopened = client.patch(
+        (
+            "/api/research/92/suppliers/"
+            "Precio%20sospechoso/price-review"
+        ),
+        json={"status": "requires_review"},
+    )
+
+    assert reopened.status_code == 200
+
+    reopened_supplier = next(
+        supplier
+        for supplier in reopened.json()["result"]["suppliers"]
+        if supplier["supplier_name"] == "Precio sospechoso"
+    )
+
+    reopened_ranking = {
+        row["supplier"]["supplier_name"]: row
+        for row in reopened.json()["ranking"]
+    }
+
+    assert (
+        reopened_supplier["price_review_status"]
+        == "requires_review"
+    )
+    assert reopened_supplier["price_review_validated_at"] is None
+    assert (
+        reopened_supplier["price_review_reason"]
+        == "extremely_low_vs_comparable_median"
+    )
+    assert reopened_ranking["Precio sospechoso"]["price_score"] == 0.0
+
+    assert any(
+        "Validar el precio reportado por Precio sospechoso"
+        in question
+        for question
+        in reopened.json()["result"]["pending_questions"]
+    )
+
+    reloaded = client.get("/api/history/92")
+
+    assert reloaded.status_code == 200
+
+    persisted_supplier = next(
+        supplier
+        for supplier
+        in reloaded.json()["result"]["result"]["suppliers"]
+        if supplier["supplier_name"] == "Precio sospechoso"
+    )
+
+    assert (
+        persisted_supplier["price_review_status"]
+        == "requires_review"
+    )
+    assert persisted_supplier["price_review_validated_at"] is None

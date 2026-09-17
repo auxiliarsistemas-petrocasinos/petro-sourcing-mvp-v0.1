@@ -118,14 +118,38 @@ function priceReviewControls(supplier, researchId) {
   const badge = priceReviewBadge(supplier);
   const validatedMeta = priceValidationMeta(supplier);
 
+  if (supplier.price_review_status === "validated") {
+    return `
+      <div class="price-review-controls">
+        ${validatedMeta}
+        ${
+          researchId
+            ? `
+              <button
+                class="price-review-action price-review-reopen"
+                type="button"
+                data-price-review
+                data-price-review-status="requires_review"
+                data-research-id="${esc(researchId)}"
+                data-supplier-name="${esc(supplier.supplier_name)}"
+                aria-label="Reabrir revisión de precio de ${esc(supplier.supplier_name)}"
+              >
+                ${icon("rotate-ccw")}
+                <span>Reabrir revisión</span>
+              </button>
+            `
+            : ""
+        }
+      </div>
+    `;
+  }
+
   if (
     supplier.price_review_status !== "requires_review" ||
     !researchId
   ) {
-    const content = `${badge}${validatedMeta}`;
-
-    return content
-      ? `<div class="price-review-controls">${content}</div>`
+    return badge
+      ? `<div class="price-review-controls">${badge}</div>`
       : "";
   }
 
@@ -136,6 +160,7 @@ function priceReviewControls(supplier, researchId) {
         class="price-review-action"
         type="button"
         data-price-review
+        data-price-review-status="validated"
         data-research-id="${esc(researchId)}"
         data-supplier-name="${esc(supplier.supplier_name)}"
         aria-label="Validar precio de ${esc(supplier.supplier_name)}"
@@ -517,15 +542,25 @@ function render(data) {
   window.scrollTo({ top: results.offsetTop - 20, behavior: "smooth" });
 }
 
-async function validatePriceReview(button) {
+async function updatePriceReview(button) {
   const researchId = button.dataset.researchId;
   const supplierName = button.dataset.supplierName;
+  const status = button.dataset.priceReviewStatus;
 
-  const confirmed = window.confirm(
-    `¿Confirmas que revisaste y validaste el precio de ${supplierName}?`,
-  );
+  const reopening = status === "requires_review";
 
-  if (!confirmed) return;
+  const message = reopening
+    ? (
+        `¿Confirmas que quieres reabrir la revisión del precio ` +
+        `de ${supplierName}? El precio volverá a ser evaluado ` +
+        `por las reglas de comparación.`
+      )
+    : (
+        `¿Confirmas que revisaste y validaste el precio ` +
+        `de ${supplierName}?`
+      );
+
+  if (!window.confirm(message)) return;
 
   button.disabled = true;
 
@@ -535,7 +570,7 @@ async function validatePriceReview(button) {
       {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "validated" }),
+        body: JSON.stringify({ status }),
       },
     );
 
@@ -543,7 +578,12 @@ async function validatePriceReview(button) {
 
     if (!response.ok) {
       throw new Error(
-        body.detail || "No se pudo validar el precio.",
+        body.detail ||
+          (
+            reopening
+              ? "No se pudo reabrir la revisión del precio."
+              : "No se pudo validar el precio."
+          ),
       );
     }
 
@@ -649,7 +689,7 @@ results.addEventListener("click", (event) => {
   const button = event.target.closest("[data-price-review]");
   if (!button) return;
 
-  validatePriceReview(button);
+  updatePriceReview(button);
 });
 
 researchBtn.addEventListener("click", research);

@@ -2385,3 +2385,14 @@ details[open] > summary .details-chevron {
   height: 12px;
   flex: 0 0 auto;
 }
+
+.price-review-reopen {
+  border-color: rgba(44, 48, 78, 0.14);
+  background: transparent;
+  color: var(--brand-blue-700);
+}
+
+.price-review-reopen:hover {
+  border-color: rgba(44, 48, 78, 0.24);
+  background: var(--brand-blue-50);
+}

@@ -184,7 +184,10 @@ def update_supplier_price_review(
     supplier_name: str,
     payload: PriceReviewRequest,
 ):
-    if payload.status != "validated":
+    if payload.status not in {
+        "validated",
+        "requires_review",
+    }:
         raise HTTPException(
             status_code=422,
             detail="Estado de revisión de precio no soportado.",
@@ -225,25 +228,39 @@ def update_supplier_price_review(
 
     supplier = matches[0]
 
-    if supplier.price_review_status not in {
-        "requires_review",
-        "validated",
-    }:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                "El precio del proveedor no está pendiente "
-                "de validación."
-            ),
-        )
+    if payload.status == "validated":
+        if supplier.price_review_status not in {
+            "requires_review",
+            "validated",
+        }:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "El precio del proveedor no está pendiente "
+                    "de validación."
+                ),
+            )
 
-    supplier.price_review_status = "validated"
-    supplier.price_review_reason = None
+        supplier.price_review_status = "validated"
+        supplier.price_review_reason = None
 
-    if supplier.price_review_validated_at is None:
-        supplier.price_review_validated_at = (
-            datetime.now(UTC).isoformat()
-        )
+        if supplier.price_review_validated_at is None:
+            supplier.price_review_validated_at = (
+                datetime.now(UTC).isoformat()
+            )
+
+    else:
+        if supplier.price_review_status != "validated":
+            raise HTTPException(
+                status_code=409,
+                detail="El precio del proveedor no está validado.",
+            )
+
+        # Retiramos la decisión manual. El ranking vuelve a
+        # evaluar si la evidencia todavía justifica revisión.
+        supplier.price_review_status = "not_required"
+        supplier.price_review_reason = None
+        supplier.price_review_validated_at = None
 
     ranking = rank_suppliers(result.suppliers)
 

@@ -363,3 +363,79 @@ def test_pending_questions_target_direct_supplier_not_marketplace():
         "Marketplace" in item
         for item in pending
     )
+
+
+def test_recommendation_skips_confirmed_out_of_stock_supplier():
+    unavailable = supplier(
+        "Proveedor agotado",
+        price_text="$10.000 COP",
+        price=10_000,
+        price_status="confirmado",
+        delivery_time="Entrega inmediata",
+        delivery_days=1,
+        delivery_status="confirmado",
+    )
+    unavailable.availability_text = "Agotado"
+    unavailable.availability_status = "sin_stock"
+
+    usable = supplier(
+        "Proveedor utilizable",
+        delivery_time="2 días",
+        delivery_days=2,
+        delivery_status="confirmado",
+    )
+
+    result = ResearchResult(
+        interpreted_request="Comprar guantes.",
+        product="guantes de nitrilo",
+        quantity="100 cajas",
+        destination="Bogotá",
+        suppliers=[unavailable, usable],
+        recommendation_summary="Texto previo.",
+    )
+
+    ranking = rank_suppliers(result.suppliers)
+
+    summary = build_recommendation_summary(
+        result,
+        ranking,
+    )
+
+    assert summary.startswith(
+        "Proveedor utilizable "
+    )
+    assert "Proveedor agotado encabeza" not in summary
+
+
+def test_recommendation_skips_insufficient_stock_supplier():
+    insufficient = supplier(
+        "Proveedor insuficiente",
+        price_text="$15.000 COP",
+        price=15_000,
+        price_status="confirmado",
+    )
+    insufficient.availability_status = "disponible"
+    insufficient.fulfillment_status = "insuficiente"
+
+    usable = supplier(
+        "Proveedor utilizable",
+    )
+
+    result = ResearchResult(
+        interpreted_request="Comprar guantes.",
+        product="guantes de nitrilo",
+        quantity="100 cajas",
+        destination="Bogotá",
+        suppliers=[insufficient, usable],
+        recommendation_summary="Texto previo.",
+    )
+
+    ranking = rank_suppliers(result.suppliers)
+
+    summary = build_recommendation_summary(
+        result,
+        ranking,
+    )
+
+    assert summary.startswith("Proveedor utilizable ")
+    assert "Proveedor insuficiente encabeza" not in summary

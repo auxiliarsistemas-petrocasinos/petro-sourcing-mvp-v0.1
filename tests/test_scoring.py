@@ -589,3 +589,89 @@ def test_incompatible_price_base_units_are_not_compared():
 
     assert rows["Precio por unidad"].price_score == 0.0
     assert rows["Precio por par"].price_score == 0.0
+
+
+def test_out_of_stock_supplier_does_not_score_or_set_price_benchmark():
+    unavailable = supplier(
+        "Proveedor agotado",
+        total=50_000,
+        price_status="confirmado",
+        credit_days=60,
+        credit_status="confirmado",
+        delivery_days=1,
+        delivery_status="confirmado",
+        certifications=["ISO 9001"],
+        certifications_status="confirmado",
+        confidence="alta",
+        sources=[
+            Source(
+                title="Producto agotado",
+                url="https://example.com/agotado",
+            )
+        ],
+    )
+    unavailable.availability_text = "Sin existencias"
+    unavailable.availability_status = "sin_stock"
+
+    available = supplier(
+        "Proveedor utilizable",
+        total=100_000,
+        price_status="confirmado",
+        delivery_days=2,
+        delivery_status="confirmado",
+    )
+    available.availability_status = "por_confirmar"
+
+    ranking = rank_suppliers(
+        [unavailable, available]
+    )
+    rows = {
+        row.supplier.supplier_name: row
+        for row in ranking
+    }
+
+    assert rows["Proveedor agotado"].score == 0.0
+    assert rows["Proveedor agotado"].price_score == 0.0
+
+    # Al excluir el agotado solo queda un precio utilizable,
+    # por lo que no existe benchmark competitivo.
+    assert rows["Proveedor utilizable"].price_score == 0.0
+    assert (
+        rows["Proveedor utilizable"].rank
+        < rows["Proveedor agotado"].rank
+    )
+
+
+def test_insufficient_stock_supplier_does_not_score():
+    insufficient = supplier(
+        "Stock insuficiente",
+        total=50_000,
+        price_status="confirmado",
+        delivery_days=1,
+        delivery_status="confirmado",
+    )
+    insufficient.availability_status = "disponible"
+    insufficient.fulfillment_status = "insuficiente"
+
+    usable = supplier(
+        "Proveedor utilizable",
+        total=100_000,
+        price_status="confirmado",
+        delivery_days=2,
+        delivery_status="confirmado",
+    )
+
+    ranking = rank_suppliers(
+        [insufficient, usable]
+    )
+    rows = {
+        row.supplier.supplier_name: row
+        for row in ranking
+    }
+
+    assert rows["Stock insuficiente"].score == 0.0
+    assert rows["Stock insuficiente"].price_score == 0.0
+    assert (
+        rows["Proveedor utilizable"].rank
+        < rows["Stock insuficiente"].rank
+    )

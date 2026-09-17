@@ -1778,3 +1778,90 @@ def test_price_evidence_preserves_structured_price_fields():
     assert checked.price_basis_quantity == 100
     assert checked.price_base_unit == "unidad"
     assert checked.price_cop_per_unit == 150
+
+
+def test_general_source_does_not_confirm_out_of_stock_status():
+    general = Source(
+        title="Proveedor oficial",
+        url="https://proveedor.example/",
+    )
+
+    supplier = SupplierResearch(
+        supplier_name="Proveedor",
+        product_match="Producto solicitado",
+        product_match_status="confirmado",
+        availability_text="Sin stock",
+        availability_status="sin_stock",
+        evidence_summary="Estado de stock no sustentado.",
+        confidence="alta",
+        sources=[general],
+    )
+
+    result = ResearchResult(
+        interpreted_request="Comprar producto",
+        product="Producto",
+        quantity="100 unidades",
+        destination="Bogotá",
+        suppliers=[supplier],
+        recommendation_summary="Resumen",
+    )
+
+    validated = research._enforce_source_evidence(
+        result,
+        [
+            {
+                "title": "Proveedor oficial",
+                "url": "https://proveedor.example/",
+            }
+        ],
+    )
+
+    checked = validated.suppliers[0]
+
+    assert checked.availability_sources == []
+    assert checked.availability_text == "Por confirmar"
+    assert checked.availability_status == "por_confirmar"
+
+
+def test_specific_availability_source_preserves_out_of_stock_status():
+    stock_source = Source(
+        title="Ficha oficial del producto",
+        url="https://proveedor.example/producto",
+    )
+
+    supplier = SupplierResearch(
+        supplier_name="Proveedor",
+        product_match="Producto solicitado",
+        product_match_status="confirmado",
+        availability_text="Producto agotado",
+        availability_status="sin_stock",
+        availability_sources=[stock_source],
+        evidence_summary="Sin stock sustentado.",
+        confidence="alta",
+        sources=[stock_source],
+    )
+
+    result = ResearchResult(
+        interpreted_request="Comprar producto",
+        product="Producto",
+        quantity="100 unidades",
+        destination="Bogotá",
+        suppliers=[supplier],
+        recommendation_summary="Resumen",
+    )
+
+    validated = research._enforce_source_evidence(
+        result,
+        [
+            {
+                "title": "Ficha oficial del producto",
+                "url": "https://proveedor.example/producto",
+            }
+        ],
+    )
+
+    checked = validated.suppliers[0]
+
+    assert checked.availability_sources == [stock_source]
+    assert checked.availability_text == "Producto agotado"
+    assert checked.availability_status == "sin_stock"

@@ -227,19 +227,23 @@ Reglas obligatorias:
    "caja x100 unidades".
 8. Si no hay precio público, escribe 'Por confirmar'; no fabriques un valor.
    No asumas moneda, presentación ni cantidad contenida cuando la fuente sea ambigua.
-9. Para crédito, evalúa únicamente crédito comercial otorgado directamente por el proveedor.
+9. Para disponibilidad, solo afirma "disponible" o "sin stock" cuando la fuente
+   lo indique explícitamente. Que exista una ficha de producto no demuestra existencia.
+   No afirmes que hay cantidad suficiente para cubrir la compra salvo que la fuente
+   sustente explícitamente esa cantidad.
+10. Para crédito, evalúa únicamente crédito comercial otorgado directamente por el proveedor.
    Solo afirma días/plazo cuando exista evidencia explícita de pago diferido al proveedor,
    por ejemplo 30, 45 o 60 días contra factura. Tarjetas de crédito, cuotas de pasarelas,
    marketplaces o financiación de terceros como MercadoPago, Addi, Sistecrédito u otros
    NO cuentan como crédito comercial del proveedor. Puedes mencionarlos como forma de pago,
    pero no como días de crédito del proveedor.
-10. Para entrega, si se infiere por distancia o cobertura, márcala como estimada.
-11. Para certificaciones/estándares, incluye solo los que tengan evidencia.
-12. Incluye datos de contacto públicos cuando estén disponibles.
-13. Cita las fuentes usadas. La recomendación final debe ser útil para un comprador.
-14. Considera que el criterio de decisión es: precio, crédito, tiempo de entrega,
+11. Para entrega, si se infiere por distancia o cobertura, márcala como estimada.
+12. Para certificaciones/estándares, incluye solo los que tengan evidencia.
+13. Incluye datos de contacto públicos cuando estén disponibles.
+14. Cita las fuentes usadas. La recomendación final debe ser útil para un comprador.
+15. Considera que el criterio de decisión es: precio, crédito, tiempo de entrega,
     certificaciones/estándares y calidad de evidencia.
-15. No confundas un portal que lista productos con el proveedor real.
+16. No confundas un portal que lista productos con el proveedor real.
 """
 
 
@@ -690,6 +694,10 @@ def _enforce_source_evidence(
                 and source.url in supplier_urls
             ]
 
+        supplier.availability_sources = valid_supplier_sources(
+            supplier.availability_sources,
+            supplier_urls,
+        )
         supplier.price_sources = valid_supplier_sources(
             supplier.price_sources,
             supplier_urls,
@@ -719,12 +727,17 @@ def _enforce_source_evidence(
             supplier.confidence = "baja"
             supplier.product_match_status = "por_confirmar"
 
+            supplier.availability_sources = []
             supplier.price_sources = []
             supplier.credit_sources = []
             supplier.delivery_sources = []
             supplier.certifications_sources = []
             supplier.capacity_sources = []
             supplier.contact_sources = []
+
+            supplier.availability_text = "Por confirmar"
+            supplier.availability_status = "por_confirmar"
+            supplier.fulfillment_status = "por_confirmar"
 
             supplier.price_text = "Por confirmar"
             supplier.price_amount_cop = None
@@ -754,6 +767,11 @@ def _enforce_source_evidence(
             supplier.website = "Por confirmar"
 
             continue
+
+        if not supplier.availability_sources:
+            supplier.availability_text = "Por confirmar"
+            supplier.availability_status = "por_confirmar"
+            supplier.fulfillment_status = "por_confirmar"
 
         if not supplier.price_sources:
             supplier.price_text = "Por confirmar"

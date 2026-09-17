@@ -28,6 +28,12 @@ def _normalize_text(value: str) -> str:
 def is_supplier_eligible(
     supplier: SupplierResearch,
 ) -> bool:
+    if supplier.availability_status == "sin_stock":
+        return False
+
+    if supplier.fulfillment_status == "insuficiente":
+        return False
+
     supplier_type = _normalize_text(
         supplier.supplier_type or ""
     )

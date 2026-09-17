@@ -5,6 +5,16 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 EvidenceStatus = Literal["confirmado", "estimado", "por_confirmar"]
+AvailabilityStatus = Literal[
+    "disponible",
+    "sin_stock",
+    "por_confirmar",
+]
+FulfillmentStatus = Literal[
+    "suficiente",
+    "insuficiente",
+    "por_confirmar",
+]
 ConfidenceLevel = Literal["alta", "media", "baja"]
 
 
@@ -22,6 +32,11 @@ class SupplierResearch(BaseModel):
 
     product_match: str
     product_match_status: EvidenceStatus = "por_confirmar"
+
+    availability_text: str = "Por confirmar"
+    availability_status: AvailabilityStatus = "por_confirmar"
+    fulfillment_status: FulfillmentStatus = "por_confirmar"
+    availability_sources: list[Source] = Field(default_factory=list)
 
     price_text: str = "Por confirmar"
     price_amount_cop: float | None = None

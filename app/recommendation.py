@@ -64,6 +64,27 @@ def build_recommendation_summary(
             f"{names}."
         )
 
+    prices_requiring_review = [
+        row.supplier
+        for row in confirmed_matches
+        if row.supplier.price_review_status == "requires_review"
+    ]
+
+    for reviewed_supplier in prices_requiring_review:
+        price = reviewed_supplier.price_text
+
+        if not price or price == "Por confirmar":
+            price_detail = ""
+        else:
+            price_detail = f" ({price})"
+
+        parts.append(
+            f"El precio reportado por "
+            f"{reviewed_supplier.supplier_name}"
+            f"{price_detail} requiere validación y no se usa "
+            "como referencia automática de precio."
+        )
+
     pending: list[str] = []
 
     pending.append(
@@ -136,6 +157,16 @@ def build_pending_questions(
             "especificación solicitada."
         )
         return pending
+
+    for row in confirmed_matches:
+        reviewed_supplier = row.supplier
+
+        if reviewed_supplier.price_review_status == "requires_review":
+            pending.append(
+                "Validar el precio reportado por "
+                f"{reviewed_supplier.supplier_name} "
+                "antes de usarlo como referencia de precio."
+            )
 
     supplier = confirmed_matches[0].supplier
     name = supplier.supplier_name

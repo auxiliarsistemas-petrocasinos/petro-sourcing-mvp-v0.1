@@ -439,3 +439,103 @@ def test_recommendation_skips_insufficient_stock_supplier():
 
     assert summary.startswith("Proveedor utilizable ")
     assert "Proveedor insuficiente encabeza" not in summary
+
+
+def price_review_scenario():
+    suspicious = supplier(
+        "Precio sospechoso",
+        price_text="$40.000 COP",
+        price=40_000,
+        price_status="confirmado",
+    )
+    suspicious.estimated_total_delivered_cop = 40_000
+
+    normal = supplier(
+        "Precio normal",
+        price_text="$100.000 COP",
+        price=100_000,
+        price_status="confirmado",
+    )
+    normal.estimated_total_delivered_cop = 100_000
+
+    high = supplier(
+        "Precio alto",
+        price_text="$105.000 COP",
+        price=105_000,
+        price_status="confirmado",
+    )
+    high.estimated_total_delivered_cop = 105_000
+
+    result = ResearchResult(
+        interpreted_request="Comprar guantes.",
+        product="guantes de nitrilo",
+        quantity="100 cajas",
+        destination="Bogotá",
+        suppliers=[suspicious, normal, high],
+        recommendation_summary="Texto previo.",
+    )
+
+    ranking = rank_suppliers(result.suppliers)
+
+    assert suspicious.price_review_status == "requires_review"
+
+    return result, ranking, suspicious
+
+
+def test_summary_explains_price_requiring_review():
+    result, ranking, _ = price_review_scenario()
+
+    summary = build_recommendation_summary(
+        result,
+        ranking,
+    )
+
+    assert "Precio sospechoso" in summary
+    assert "$40.000 COP" in summary
+    assert "requiere validación" in summary
+    assert "no se usa como referencia automática" in summary
+
+
+def test_pending_questions_include_price_review_validation():
+    from app.recommendation import build_pending_questions
+
+    result, ranking, _ = price_review_scenario()
+
+    pending = build_pending_questions(
+        result,
+        ranking,
+    )
+
+    assert (
+        "Validar el precio reportado por Precio sospechoso "
+        "antes de usarlo como referencia de precio."
+        in pending
+    )
+
+
+def test_validated_price_no_longer_generates_review_warning():
+    from app.recommendation import build_pending_questions
+
+    result, _, suspicious = price_review_scenario()
+
+    suspicious.price_review_status = "validated"
+    suspicious.price_review_reason = None
+
+    ranking = rank_suppliers(result.suppliers)
+
+    summary = build_recommendation_summary(
+        result,
+        ranking,
+    )
+    pending = build_pending_questions(
+        result,
+        ranking,
+    )
+
+    assert "requiere validación" not in summary
+    assert "no se usa como referencia automática" not in summary
+    assert not any(
+        "Validar el precio reportado por Precio sospechoso"
+        in item
+        for item in pending
+    )

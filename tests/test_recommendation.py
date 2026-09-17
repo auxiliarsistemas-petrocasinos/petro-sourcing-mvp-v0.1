@@ -744,3 +744,118 @@ def test_confirmed_price_with_source_does_not_generate_evidence_warning():
         in item
         for item in pending
     )
+
+
+def test_summary_warns_when_confirmed_delivery_has_no_source():
+    top = supplier(
+        "Proveedor Uno",
+        delivery_time="Entrega en 2 días",
+        delivery_days=2,
+        delivery_status="confirmado",
+    )
+    top.delivery_sources = []
+
+    result = ResearchResult(
+        interpreted_request="Comprar guantes.",
+        product="guantes de nitrilo",
+        quantity="100 cajas",
+        destination="Bogotá",
+        suppliers=[top],
+        recommendation_summary="Texto previo.",
+    )
+
+    ranking = rank_suppliers(result.suppliers)
+
+    summary = build_recommendation_summary(
+        result,
+        ranking,
+    )
+
+    assert "Entrega reportada: Entrega en 2 días." in summary
+    assert (
+        "la entrega reportada por Proveedor Uno no tiene "
+        "una fuente registrada"
+        in summary
+    )
+
+
+def test_pending_questions_require_delivery_evidence_when_missing_source():
+    from app.recommendation import build_pending_questions
+
+    top = supplier(
+        "Proveedor Uno",
+        delivery_time="Entrega en 2 días",
+        delivery_days=2,
+        delivery_status="confirmado",
+    )
+    top.delivery_sources = []
+
+    result = ResearchResult(
+        interpreted_request="Comprar guantes.",
+        product="guantes de nitrilo",
+        quantity="100 cajas",
+        destination="Bogotá",
+        suppliers=[top],
+        recommendation_summary="Resumen.",
+    )
+
+    ranking = rank_suppliers(result.suppliers)
+
+    pending = build_pending_questions(
+        result,
+        ranking,
+    )
+
+    assert (
+        "Confirmar evidencia del tiempo de entrega reportado por "
+        "Proveedor Uno."
+        in pending
+    )
+
+
+def test_confirmed_delivery_with_source_does_not_generate_evidence_warning():
+    from app.recommendation import build_pending_questions
+
+    top = supplier(
+        "Proveedor Uno",
+        delivery_time="Entrega en 2 días",
+        delivery_days=2,
+        delivery_status="confirmado",
+    )
+    top.delivery_sources = [
+        Source(
+            title="Política de entregas",
+            url="https://example.com/entregas",
+        )
+    ]
+
+    result = ResearchResult(
+        interpreted_request="Comprar guantes.",
+        product="guantes de nitrilo",
+        quantity="100 cajas",
+        destination="Bogotá",
+        suppliers=[top],
+        recommendation_summary="Resumen.",
+    )
+
+    ranking = rank_suppliers(result.suppliers)
+
+    summary = build_recommendation_summary(
+        result,
+        ranking,
+    )
+    pending = build_pending_questions(
+        result,
+        ranking,
+    )
+
+    assert (
+        "la entrega reportada por Proveedor Uno no tiene "
+        "una fuente registrada"
+        not in summary
+    )
+    assert not any(
+        "evidencia del tiempo de entrega reportado por Proveedor Uno"
+        in item
+        for item in pending
+    )

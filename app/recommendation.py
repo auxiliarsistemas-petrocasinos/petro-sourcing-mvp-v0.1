@@ -20,6 +20,15 @@ def _confirmed_price_without_source(supplier) -> bool:
     )
 
 
+def _confirmed_delivery_without_source(supplier) -> bool:
+    return (
+        supplier.delivery_status == "confirmado"
+        and bool(supplier.delivery_time)
+        and supplier.delivery_time != "Por confirmar"
+        and not supplier.delivery_sources
+    )
+
+
 def build_recommendation_summary(
     result: ResearchResult,
     ranking: list[RankedSupplier],
@@ -90,6 +99,14 @@ def build_recommendation_summary(
     ):
         parts.append(
             f"Entrega reportada: {supplier.delivery_time}."
+        )
+
+    if _confirmed_delivery_without_source(supplier):
+        parts.append(
+            f"la entrega reportada por "
+            f"{supplier.supplier_name} no tiene "
+            "una fuente registrada; antes de adjudicar "
+            "se debe confirmar la evidencia del tiempo de entrega."
         )
 
     alternatives = confirmed_matches[1:3]
@@ -218,6 +235,12 @@ def build_pending_questions(
     if _confirmed_price_without_source(supplier):
         pending.append(
             f"Confirmar evidencia del precio reportado por {name}."
+        )
+
+    if _confirmed_delivery_without_source(supplier):
+        pending.append(
+            "Confirmar evidencia del tiempo de entrega reportado por "
+            f"{name}."
         )
 
     if quantity_known:

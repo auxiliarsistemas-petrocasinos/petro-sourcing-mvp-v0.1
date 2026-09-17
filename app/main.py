@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -238,6 +239,11 @@ def update_supplier_price_review(
 
     supplier.price_review_status = "validated"
     supplier.price_review_reason = None
+
+    if supplier.price_review_validated_at is None:
+        supplier.price_review_validated_at = (
+            datetime.now(UTC).isoformat()
+        )
 
     ranking = rank_suppliers(result.suppliers)
 

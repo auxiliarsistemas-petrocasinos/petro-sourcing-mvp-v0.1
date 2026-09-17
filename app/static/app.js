@@ -77,14 +77,56 @@ function priceReviewBadge(supplier) {
   return statusBadge("requires_review");
 }
 
+function priceValidationMeta(supplier) {
+  if (supplier.price_review_status !== "validated") {
+    return "";
+  }
+
+  let label = "Precio validado";
+
+  if (supplier.price_review_validated_at) {
+    const validatedAt = new Date(
+      supplier.price_review_validated_at,
+    );
+
+    if (!Number.isNaN(validatedAt.getTime())) {
+      const formatted = new Intl.DateTimeFormat(
+        "es-CO",
+        {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+        },
+      ).format(validatedAt);
+
+      label += ` · ${formatted}`;
+    }
+  }
+
+  return `
+    <span class="price-review-validated">
+      ${icon("badge-check")}
+      <span>${esc(label)}</span>
+    </span>
+  `;
+}
+
 function priceReviewControls(supplier, researchId) {
   const badge = priceReviewBadge(supplier);
+  const validatedMeta = priceValidationMeta(supplier);
 
   if (
     supplier.price_review_status !== "requires_review" ||
     !researchId
   ) {
-    return badge;
+    const content = `${badge}${validatedMeta}`;
+
+    return content
+      ? `<div class="price-review-controls">${content}</div>`
+      : "";
   }
 
   return `

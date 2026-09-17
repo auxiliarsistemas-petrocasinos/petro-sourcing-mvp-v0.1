@@ -54,6 +54,7 @@ class SupplierResearch(BaseModel):
     price_sources: list[Source] = Field(default_factory=list)
     price_review_status: PriceReviewStatus = "not_required"
     price_review_reason: str | None = None
+    price_review_validated_at: str | None = None
 
     credit_terms: str = "Por confirmar"
     credit_days: int | None = None

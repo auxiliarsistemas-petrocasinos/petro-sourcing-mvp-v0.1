@@ -612,3 +612,163 @@ def test_price_validation_rejects_price_not_pending_review(
             "de validación."
         )
     }
+
+
+def test_price_review_validation_records_and_preserves_timestamp(
+    monkeypatch,
+):
+    from datetime import datetime
+
+    from app import main
+    from app.models import ResearchResult, SupplierResearch
+    from app.scoring import rank_suppliers
+
+    suspicious = SupplierResearch(
+        supplier_name="Precio sospechoso",
+        product_match="Producto solicitado",
+        product_match_status="confirmado",
+        estimated_total_delivered_cop=40_000,
+        price_status="confirmado",
+        evidence_summary="Precio confirmado.",
+    )
+    normal = SupplierResearch(
+        supplier_name="Precio normal",
+        product_match="Producto solicitado",
+        product_match_status="confirmado",
+        estimated_total_delivered_cop=100_000,
+        price_status="confirmado",
+        evidence_summary="Precio confirmado.",
+    )
+    high = SupplierResearch(
+        supplier_name="Precio alto",
+        product_match="Producto solicitado",
+        product_match_status="confirmado",
+        estimated_total_delivered_cop=105_000,
+        price_status="confirmado",
+        evidence_summary="Precio confirmado.",
+    )
+
+    result = ResearchResult(
+        interpreted_request="Comprar producto.",
+        product="Producto",
+        quantity="1",
+        destination="Bogotá",
+        suppliers=[suspicious, normal, high],
+        recommendation_summary="",
+        pending_questions=[],
+    )
+
+    ranking = rank_suppliers(result.suppliers)
+
+    assert suspicious.price_review_status == "requires_review"
+
+    stored_item = {
+        "id": 91,
+        "created_at": "2026-09-17T16:00:00+00:00",
+        "query": "Necesito comprar un producto.",
+        "result": {
+            "result": result.model_dump(),
+            "ranking": [
+                row.model_dump()
+                for row in ranking
+            ],
+            "source_count": 0,
+            "global_sources": [],
+            "raw_report": "",
+        },
+    }
+
+    def fake_get_research(research_id):
+        if research_id != 91:
+            return None
+        return stored_item
+
+    def fake_update_research(research_id, payload):
+        assert research_id == 91
+        stored_item["result"] = payload
+        return True
+
+    monkeypatch.setattr(
+        main,
+        "get_research",
+        fake_get_research,
+    )
+    monkeypatch.setattr(
+        main,
+        "update_research",
+        fake_update_research,
+    )
+
+    first = client.patch(
+        (
+            "/api/research/91/suppliers/"
+            "Precio%20sospechoso/price-review"
+        ),
+        json={"status": "validated"},
+    )
+
+    assert first.status_code == 200
+
+    first_supplier = next(
+        supplier
+        for supplier in first.json()["result"]["suppliers"]
+        if supplier["supplier_name"] == "Precio sospechoso"
+    )
+
+    timestamp = first_supplier["price_review_validated_at"]
+
+    assert timestamp is not None
+
+    parsed = datetime.fromisoformat(timestamp)
+
+    assert parsed.tzinfo is not None
+
+    second = client.patch(
+        (
+            "/api/research/91/suppliers/"
+            "Precio%20sospechoso/price-review"
+        ),
+        json={"status": "validated"},
+    )
+
+    assert second.status_code == 200
+
+    second_supplier = next(
+        supplier
+        for supplier in second.json()["result"]["suppliers"]
+        if supplier["supplier_name"] == "Precio sospechoso"
+    )
+
+    assert (
+        second_supplier["price_review_validated_at"]
+        == timestamp
+    )
+
+    reloaded = client.get("/api/history/91")
+
+    assert reloaded.status_code == 200
+
+    persisted_supplier = next(
+        supplier
+        for supplier
+        in reloaded.json()["result"]["result"]["suppliers"]
+        if supplier["supplier_name"] == "Precio sospechoso"
+    )
+
+    assert (
+        persisted_supplier["price_review_validated_at"]
+        == timestamp
+    )
+
+
+def test_unvalidated_price_has_no_validation_timestamp():
+    from app.models import SupplierResearch
+
+    supplier = SupplierResearch(
+        supplier_name="Proveedor normal",
+        product_match="Producto solicitado",
+        evidence_summary="Evidencia.",
+    )
+
+    assert supplier.price_review_status == "not_required"
+    assert supplier.price_review_validated_at is None

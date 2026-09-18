@@ -77,13 +77,33 @@ def build_recommendation_summary(
             and is_supplier_eligible(row.supplier)
         )
     ]
+    unconfirmed_matches = [
+        row
+        for row in ranking
+        if (
+            row.supplier.product_match_status != "confirmado"
+            and is_supplier_eligible(row.supplier)
+        )
+    ]
 
     if not confirmed_matches:
-        return (
+        parts = [
             "No hay proveedores con coincidencia exacta del producto "
-            "confirmada por la evidencia disponible. "
+            "confirmada por la evidencia disponible."
+        ]
+
+        for row in unconfirmed_matches:
+            parts.append(
+                f"{row.supplier.supplier_name} queda fuera de la "
+                "recomendación porque la coincidencia exacta del "
+                "producto no está confirmada."
+            )
+
+        parts.append(
             "Se requiere ampliar la investigación antes de adjudicar."
         )
+
+        return " ".join(parts)
 
     top = confirmed_matches[0]
     supplier = top.supplier
@@ -95,6 +115,13 @@ def build_recommendation_summary(
             f"con {top.score:.1f} puntos."
         )
     ]
+
+    for row in unconfirmed_matches:
+        parts.append(
+            f"{row.supplier.supplier_name} queda fuera de la "
+            "recomendación porque la coincidencia exacta del "
+            "producto no está confirmada."
+        )
 
     if _needs_evidence_reinforcement(supplier):
         if not supplier.sources:
@@ -274,6 +301,20 @@ def build_pending_questions(
             and is_supplier_eligible(row.supplier)
         )
     ]
+    unconfirmed_matches = [
+        row
+        for row in ranking
+        if (
+            row.supplier.product_match_status != "confirmado"
+            and is_supplier_eligible(row.supplier)
+        )
+    ]
+
+    for row in unconfirmed_matches:
+        pending.append(
+            "Confirmar coincidencia exacta del producto con "
+            f"{row.supplier.supplier_name}."
+        )
 
     if not confirmed_matches:
         pending.append(

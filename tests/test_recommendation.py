@@ -1292,3 +1292,117 @@ def test_confirmed_capacity_with_source_does_not_generate_evidence_warning():
         in item
         for item in pending
     )
+
+
+def test_summary_explains_suppliers_excluded_for_unconfirmed_product_match():
+    confirmed = supplier(
+        "Proveedor confirmado",
+        match_status="confirmado",
+    )
+    unconfirmed = supplier(
+        "Proveedor por validar",
+        match_status="estimado",
+    )
+
+    result = ResearchResult(
+        interpreted_request="Comprar guantes.",
+        product="guantes de nitrilo talla M",
+        quantity="100 cajas",
+        destination="Bogotá",
+        suppliers=[confirmed, unconfirmed],
+        recommendation_summary="Resumen.",
+    )
+
+    ranking = rank_suppliers(result.suppliers)
+
+    summary = build_recommendation_summary(
+        result,
+        ranking,
+    )
+
+    assert (
+        "Proveedor por validar queda fuera de la recomendación "
+        "porque la coincidencia exacta del producto no está confirmada."
+        in summary
+    )
+
+
+def test_pending_questions_require_product_match_confirmation_for_excluded_supplier():
+    from app.recommendation import build_pending_questions
+
+    confirmed = supplier(
+        "Proveedor confirmado",
+        match_status="confirmado",
+    )
+    unconfirmed = supplier(
+        "Proveedor por validar",
+        match_status="por_confirmar",
+    )
+
+    result = ResearchResult(
+        interpreted_request="Comprar guantes.",
+        product="guantes de nitrilo talla M",
+        quantity="100 cajas",
+        destination="Bogotá",
+        suppliers=[confirmed, unconfirmed],
+        recommendation_summary="Resumen.",
+    )
+
+    ranking = rank_suppliers(result.suppliers)
+
+    pending = build_pending_questions(
+        result,
+        ranking,
+    )
+
+    assert (
+        "Confirmar coincidencia exacta del producto con "
+        "Proveedor por validar."
+        in pending
+    )
+
+
+def test_no_confirmed_matches_identifies_supplier_requiring_product_confirmation():
+    from app.recommendation import build_pending_questions
+
+    candidate = supplier(
+        "Proveedor candidato",
+        match_status="por_confirmar",
+    )
+
+    result = ResearchResult(
+        interpreted_request="Comprar guantes.",
+        product="guantes de nitrilo talla M",
+        quantity="100 cajas",
+        destination="Bogotá",
+        suppliers=[candidate],
+        recommendation_summary="Resumen.",
+    )
+
+    ranking = rank_suppliers(result.suppliers)
+
+    summary = build_recommendation_summary(
+        result,
+        ranking,
+    )
+    pending = build_pending_questions(
+        result,
+        ranking,
+    )
+
+    assert "Proveedor candidato" in summary
+    assert (
+        "coincidencia exacta del producto no está confirmada"
+        in summary
+    )
+    assert (
+        "Confirmar coincidencia exacta del producto con "
+        "Proveedor candidato."
+        in pending
+    )
+    assert (
+        "Ampliar la investigación para confirmar al menos "
+        "un proveedor que cumpla exactamente la "
+        "especificación solicitada."
+        in pending
+    )

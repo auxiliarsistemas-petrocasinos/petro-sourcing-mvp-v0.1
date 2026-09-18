@@ -1888,3 +1888,166 @@ def test_extraction_prompt_rejects_general_source_as_availability_evidence():
         "disponibilidad"
         in research.EXTRACTION_PROMPT
     )
+
+
+def test_product_match_sources_default_to_empty():
+    supplier = SupplierResearch(
+        supplier_name="Proveedor",
+        product_match="Producto solicitado",
+        evidence_summary="Proveedor encontrado.",
+    )
+
+    assert supplier.product_match_sources == []
+
+
+def test_general_supplier_source_does_not_confirm_product_match():
+    general = Source(
+        title="Proveedor oficial",
+        url="https://proveedor.example/",
+    )
+
+    supplier = SupplierResearch(
+        supplier_name="Proveedor",
+        product_match="Guantes de nitrilo talla M",
+        product_match_status="confirmado",
+        evidence_summary="Proveedor real, match sin evidencia específica.",
+        confidence="alta",
+        sources=[general],
+    )
+
+    result = ResearchResult(
+        interpreted_request="Comprar guantes de nitrilo talla M.",
+        product="Guantes de nitrilo talla M",
+        quantity="100 cajas",
+        destination="Bogotá",
+        suppliers=[supplier],
+        recommendation_summary="Resumen",
+    )
+
+    validated = research._enforce_source_evidence(
+        result,
+        [
+            {
+                "title": "Proveedor oficial",
+                "url": "https://proveedor.example/",
+            }
+        ],
+    )
+
+    checked = validated.suppliers[0]
+
+    assert checked.sources == [general]
+    assert checked.product_match_status == "por_confirmar"
+
+
+def test_specific_product_match_source_preserves_confirmed_match():
+    product_source = Source(
+        title="Ficha oficial guantes nitrilo talla M",
+        url="https://proveedor.example/guantes-nitrilo-m",
+    )
+
+    supplier = SupplierResearch(
+        supplier_name="Proveedor",
+        product_match="Guantes de nitrilo talla M",
+        product_match_status="confirmado",
+        product_match_sources=[product_source],
+        evidence_summary="Coincidencia exacta documentada.",
+        confidence="alta",
+        sources=[product_source],
+    )
+
+    result = ResearchResult(
+        interpreted_request="Comprar guantes de nitrilo talla M.",
+        product="Guantes de nitrilo talla M",
+        quantity="100 cajas",
+        destination="Bogotá",
+        suppliers=[supplier],
+        recommendation_summary="Resumen",
+    )
+
+    validated = research._enforce_source_evidence(
+        result,
+        [
+            {
+                "title": "Ficha oficial guantes nitrilo talla M",
+                "url": "https://proveedor.example/guantes-nitrilo-m",
+            }
+        ],
+    )
+
+    checked = validated.suppliers[0]
+
+    assert checked.product_match_sources == [product_source]
+    assert checked.product_match_status == "confirmado"
+
+
+def test_product_match_source_from_other_supplier_is_rejected():
+    supplier_source = Source(
+        title="Proveedor A",
+        url="https://a.example/",
+    )
+    other_product_source = Source(
+        title="Producto proveedor B",
+        url="https://b.example/producto",
+    )
+
+    supplier = SupplierResearch(
+        supplier_name="Proveedor A",
+        product_match="Producto solicitado",
+        product_match_status="confirmado",
+        product_match_sources=[other_product_source],
+        evidence_summary="Match sustentado con fuente incorrecta.",
+        confidence="alta",
+        sources=[supplier_source],
+    )
+
+    result = ResearchResult(
+        interpreted_request="Comprar producto.",
+        product="Producto",
+        quantity="100 unidades",
+        destination="Bogotá",
+        suppliers=[supplier],
+        recommendation_summary="Resumen",
+    )
+
+    validated = research._enforce_source_evidence(
+        result,
+        [
+            {
+                "title": "Proveedor A",
+                "url": "https://a.example/",
+            },
+            {
+                "title": "Producto proveedor B",
+                "url": "https://b.example/producto",
+            },
+        ],
+    )
+
+    checked = validated.suppliers[0]
+
+    assert checked.product_match_sources == []
+    assert checked.product_match_status == "por_confirmar"
+
+
+def test_extraction_prompt_defines_product_match_sources():
+    assert (
+        "`product_match_sources` contiene únicamente fuentes "
+        "que sustentan directamente la coincidencia exacta del producto"
+        in research.EXTRACTION_PROMPT
+    )
+
+
+def test_extraction_prompt_requires_product_match_source_to_belong_to_supplier_sources():
+    assert (
+        "`product_match_sources`, `availability_sources`"
+        in research.EXTRACTION_PROMPT
+    )
+
+
+def test_extraction_prompt_rejects_general_source_as_product_match_evidence():
+    assert (
+        "Una fuente general del proveedor NO demuestra por sí sola "
+        "la coincidencia exacta del producto"
+        in research.EXTRACTION_PROMPT
+    )

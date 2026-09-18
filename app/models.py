@@ -37,6 +37,7 @@ class SupplierResearch(BaseModel):
 
     product_match: str
     product_match_status: EvidenceStatus = "por_confirmar"
+    product_match_sources: list[Source] = Field(default_factory=list)
 
     availability_text: str = "Por confirmar"
     availability_status: AvailabilityStatus = "por_confirmar"

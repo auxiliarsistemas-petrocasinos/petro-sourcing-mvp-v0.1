@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from .eligibility import is_supplier_eligible
+from .eligibility import (
+    is_supplier_eligible,
+    supplier_ineligibility_reason,
+)
 from .models import RankedSupplier, ResearchResult
 
 
@@ -65,6 +68,31 @@ def _confirmed_capacity_without_source(supplier) -> bool:
     )
 
 
+def _ineligibility_explanation(supplier) -> str | None:
+    reason = supplier_ineligibility_reason(supplier)
+
+    if reason == "sin_stock":
+        return (
+            f"{supplier.supplier_name} queda fuera de la recomendación "
+            "porque la evidencia reporta que no tiene stock disponible."
+        )
+
+    if reason == "capacidad_insuficiente":
+        return (
+            f"{supplier.supplier_name} queda fuera de la recomendación "
+            "porque la capacidad reportada no cubre la cantidad solicitada."
+        )
+
+    if reason == "tipo_no_elegible":
+        return (
+            f"{supplier.supplier_name} queda fuera de la recomendación "
+            "porque corresponde a un marketplace o directorio "
+            "y no a un proveedor directo elegible."
+        )
+
+    return None
+
+
 def build_recommendation_summary(
     result: ResearchResult,
     ranking: list[RankedSupplier],
@@ -85,12 +113,23 @@ def build_recommendation_summary(
             and is_supplier_eligible(row.supplier)
         )
     ]
+    ineligible_suppliers = [
+        row
+        for row in ranking
+        if not is_supplier_eligible(row.supplier)
+    ]
 
     if not confirmed_matches:
-        parts = [
-            "No hay proveedores con coincidencia exacta del producto "
-            "confirmada por la evidencia disponible."
-        ]
+        if unconfirmed_matches:
+            parts = [
+                "No hay proveedores con coincidencia exacta del producto "
+                "confirmada por la evidencia disponible."
+            ]
+        else:
+            parts = [
+                "No hay proveedores elegibles para recomendar "
+                "con la evidencia disponible."
+            ]
 
         for row in unconfirmed_matches:
             parts.append(
@@ -98,6 +137,11 @@ def build_recommendation_summary(
                 "recomendación porque la coincidencia exacta del "
                 "producto no está confirmada."
             )
+
+        for row in ineligible_suppliers:
+            explanation = _ineligibility_explanation(row.supplier)
+            if explanation:
+                parts.append(explanation)
 
         parts.append(
             "Se requiere ampliar la investigación antes de adjudicar."
@@ -122,6 +166,11 @@ def build_recommendation_summary(
             "recomendación porque la coincidencia exacta del "
             "producto no está confirmada."
         )
+
+    for row in ineligible_suppliers:
+        explanation = _ineligibility_explanation(row.supplier)
+        if explanation:
+            parts.append(explanation)
 
     if _needs_evidence_reinforcement(supplier):
         if not supplier.sources:
@@ -309,6 +358,11 @@ def build_pending_questions(
             and is_supplier_eligible(row.supplier)
         )
     ]
+    ineligible_suppliers = [
+        row
+        for row in ranking
+        if not is_supplier_eligible(row.supplier)
+    ]
 
     for row in unconfirmed_matches:
         pending.append(
@@ -317,11 +371,19 @@ def build_pending_questions(
         )
 
     if not confirmed_matches:
-        pending.append(
-            "Ampliar la investigación para confirmar al menos "
-            "un proveedor que cumpla exactamente la "
-            "especificación solicitada."
-        )
+        if ineligible_suppliers and not unconfirmed_matches:
+            pending.append(
+                "Ampliar la investigación para identificar al menos "
+                "un proveedor elegible que cumpla exactamente la "
+                "especificación solicitada."
+            )
+        else:
+            pending.append(
+                "Ampliar la investigación para confirmar al menos "
+                "un proveedor que cumpla exactamente la "
+                "especificación solicitada."
+            )
+
         return pending
 
     for row in confirmed_matches:

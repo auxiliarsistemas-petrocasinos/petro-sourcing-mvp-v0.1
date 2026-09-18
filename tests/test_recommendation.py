@@ -1406,3 +1406,160 @@ def test_no_confirmed_matches_identifies_supplier_requiring_product_confirmation
         "especificación solicitada."
         in pending
     )
+
+
+def test_summary_explains_out_of_stock_supplier_exclusion():
+    usable = supplier(
+        "Proveedor disponible",
+        match_status="confirmado",
+    )
+    unavailable = supplier(
+        "Proveedor agotado",
+        match_status="confirmado",
+    )
+    unavailable.availability_status = "sin_stock"
+
+    result = ResearchResult(
+        interpreted_request="Comprar guantes.",
+        product="guantes de nitrilo talla M",
+        quantity="100 cajas",
+        destination="Bogotá",
+        suppliers=[usable, unavailable],
+        recommendation_summary="Resumen.",
+    )
+
+    ranking = rank_suppliers(result.suppliers)
+
+    summary = build_recommendation_summary(
+        result,
+        ranking,
+    )
+
+    assert (
+        "Proveedor agotado queda fuera de la recomendación "
+        "porque la evidencia reporta que no tiene stock disponible."
+        in summary
+    )
+
+
+def test_summary_explains_insufficient_capacity_exclusion():
+    usable = supplier(
+        "Proveedor suficiente",
+        match_status="confirmado",
+    )
+    insufficient = supplier(
+        "Proveedor insuficiente",
+        match_status="confirmado",
+    )
+    insufficient.availability_status = "disponible"
+    insufficient.fulfillment_status = "insuficiente"
+
+    result = ResearchResult(
+        interpreted_request="Comprar guantes.",
+        product="guantes de nitrilo talla M",
+        quantity="100 cajas",
+        destination="Bogotá",
+        suppliers=[usable, insufficient],
+        recommendation_summary="Resumen.",
+    )
+
+    ranking = rank_suppliers(result.suppliers)
+
+    summary = build_recommendation_summary(
+        result,
+        ranking,
+    )
+
+    assert (
+        "Proveedor insuficiente queda fuera de la recomendación "
+        "porque la capacidad reportada no cubre la cantidad solicitada."
+        in summary
+    )
+
+
+def test_summary_explains_ineligible_supplier_type():
+    usable = supplier(
+        "Proveedor directo",
+        match_status="confirmado",
+    )
+    marketplace = supplier(
+        "Portal comercial",
+        match_status="confirmado",
+    )
+    marketplace.supplier_type = (
+        "Marketplace de múltiples vendedores"
+    )
+
+    result = ResearchResult(
+        interpreted_request="Comprar guantes.",
+        product="guantes de nitrilo talla M",
+        quantity="100 cajas",
+        destination="Bogotá",
+        suppliers=[usable, marketplace],
+        recommendation_summary="Resumen.",
+    )
+
+    ranking = rank_suppliers(result.suppliers)
+
+    summary = build_recommendation_summary(
+        result,
+        ranking,
+    )
+
+    assert (
+        "Portal comercial queda fuera de la recomendación "
+        "porque corresponde a un marketplace o directorio "
+        "y no a un proveedor directo elegible."
+        in summary
+    )
+
+
+def test_summary_distinguishes_ineligible_suppliers_from_unconfirmed_product_matches():
+    from app.recommendation import build_pending_questions
+
+    unavailable = supplier(
+        "Proveedor agotado",
+        match_status="confirmado",
+    )
+    unavailable.availability_status = "sin_stock"
+
+    result = ResearchResult(
+        interpreted_request="Comprar guantes.",
+        product="guantes de nitrilo talla M",
+        quantity="100 cajas",
+        destination="Bogotá",
+        suppliers=[unavailable],
+        recommendation_summary="Resumen.",
+    )
+
+    ranking = rank_suppliers(result.suppliers)
+
+    summary = build_recommendation_summary(
+        result,
+        ranking,
+    )
+    pending = build_pending_questions(
+        result,
+        ranking,
+    )
+
+    assert (
+        "No hay proveedores elegibles para recomendar"
+        in summary
+    )
+    assert (
+        "Proveedor agotado queda fuera de la recomendación "
+        "porque la evidencia reporta que no tiene stock disponible."
+        in summary
+    )
+    assert (
+        "No hay proveedores con coincidencia exacta del producto "
+        "confirmada"
+        not in summary
+    )
+    assert (
+        "Ampliar la investigación para identificar al menos "
+        "un proveedor elegible que cumpla exactamente la "
+        "especificación solicitada."
+        in pending
+    )

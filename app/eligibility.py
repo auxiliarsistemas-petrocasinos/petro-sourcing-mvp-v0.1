@@ -25,20 +25,29 @@ def _normalize_text(value: str) -> str:
     )
 
 
-def is_supplier_eligible(
+def supplier_ineligibility_reason(
     supplier: SupplierResearch,
-) -> bool:
+) -> str | None:
     if supplier.availability_status == "sin_stock":
-        return False
+        return "sin_stock"
 
     if supplier.fulfillment_status == "insuficiente":
-        return False
+        return "capacidad_insuficiente"
 
     supplier_type = _normalize_text(
         supplier.supplier_type or ""
     )
 
-    return not any(
+    if any(
         marker in supplier_type
         for marker in INELIGIBLE_SUPPLIER_TYPE_MARKERS
-    )
+    ):
+        return "tipo_no_elegible"
+
+    return None
+
+
+def is_supplier_eligible(
+    supplier: SupplierResearch,
+) -> bool:
+    return supplier_ineligibility_reason(supplier) is None

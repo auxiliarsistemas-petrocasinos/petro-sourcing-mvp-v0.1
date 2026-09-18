@@ -46,3 +46,37 @@ def test_unknown_supplier_type_remains_eligible():
     assert is_supplier_eligible(
         supplier_with_type("Por confirmar")
     )
+
+
+def test_ineligibility_reason_reports_out_of_stock():
+    from app.eligibility import supplier_ineligibility_reason
+
+    item = supplier_with_type("Distribuidor mayorista")
+    item.availability_status = "sin_stock"
+
+    assert supplier_ineligibility_reason(item) == "sin_stock"
+
+
+def test_ineligibility_reason_reports_insufficient_capacity():
+    from app.eligibility import supplier_ineligibility_reason
+
+    item = supplier_with_type("Distribuidor mayorista")
+    item.fulfillment_status = "insuficiente"
+
+    assert (
+        supplier_ineligibility_reason(item)
+        == "capacidad_insuficiente"
+    )
+
+
+def test_ineligibility_reason_reports_non_direct_supplier():
+    from app.eligibility import supplier_ineligibility_reason
+
+    item = supplier_with_type(
+        "Directorio de múltiples vendedores"
+    )
+
+    assert (
+        supplier_ineligibility_reason(item)
+        == "tipo_no_elegible"
+    )

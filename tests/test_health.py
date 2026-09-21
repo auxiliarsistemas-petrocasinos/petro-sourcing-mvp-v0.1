@@ -931,3 +931,43 @@ def test_reopening_validated_price_clears_validation_and_recalculates(
         == "requires_review"
     )
     assert persisted_supplier["price_review_validated_at"] is None
+
+
+
+def test_research_returns_generic_500_for_unexpected_error(
+    monkeypatch,
+):
+    from app import main
+
+    def fail_research(_query):
+        raise ValueError(
+            "detalle interno que no debe mostrarse"
+        )
+
+    monkeypatch.setattr(
+        main,
+        "research_purchase",
+        fail_research,
+    )
+
+    response = client.post(
+        "/api/research",
+        json={
+            "query": (
+                "Necesito comprar 100 cajas de guantes "
+                "de nitrilo en Bogotá."
+            )
+        },
+    )
+
+    assert response.status_code == 500
+    assert response.json() == {
+        "detail": (
+            "Ocurrió un error interno durante "
+            "la investigación."
+        )
+    }
+    assert (
+        "detalle interno que no debe mostrarse"
+        not in response.text
+    )

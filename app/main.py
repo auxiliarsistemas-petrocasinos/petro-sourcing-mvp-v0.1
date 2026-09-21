@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -37,6 +38,7 @@ from .research import (
 from .scoring import rank_suppliers
 
 BASE_DIR = Path(__file__).resolve().parent
+logger = logging.getLogger("uvicorn.error")
 
 
 @asynccontextmanager
@@ -118,6 +120,12 @@ def run_research(payload: ResearchRequest):
             else None
         )
 
+        logger.warning(
+            "Proveedor de IA alcanzó límite de uso "
+            "(retry_after=%s).",
+            retry_after or "no informado",
+        )
+
         raise HTTPException(
             status_code=503,
             detail=(
@@ -127,6 +135,13 @@ def run_research(payload: ResearchRequest):
             headers=headers,
         ) from exc
     except genai_errors.APIError as exc:
+        logger.warning(
+            "Error de API de Gemini "
+            "(type=%s, code=%s).",
+            type(exc).__name__,
+            getattr(exc, "code", None),
+        )
+
         if exc.code in {401, 403}:
             raise HTTPException(
                 status_code=500,
@@ -151,6 +166,12 @@ def run_research(payload: ResearchRequest):
         InvalidAPIKeyError,
         ForbiddenError,
     ) as exc:
+        logger.error(
+            "Error de configuración o autorización "
+            "del servicio de búsqueda (type=%s).",
+            type(exc).__name__,
+        )
+
         raise HTTPException(
             status_code=500,
             detail=(
@@ -163,6 +184,12 @@ def run_research(payload: ResearchRequest):
         UsageLimitExceededError,
         TavilyTimeoutError,
     ) as exc:
+        logger.warning(
+            "Servicio de búsqueda temporalmente "
+            "no disponible (type=%s).",
+            type(exc).__name__,
+        )
+
         raise HTTPException(
             status_code=503,
             detail=(
@@ -172,7 +199,27 @@ def run_research(payload: ResearchRequest):
         ) from exc
 
     except RuntimeError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logger.exception(
+            "Error de ejecución durante la investigación."
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=str(exc),
+        ) from exc
+
+    except Exception as exc:
+        logger.exception(
+            "Error inesperado durante la investigación "
+            "(type=%s).",
+            type(exc).__name__,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Ocurrió un error interno durante "
+                "la investigación."
+            ),
+        ) from exc
 
 
 @app.patch(

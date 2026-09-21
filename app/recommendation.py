@@ -122,13 +122,17 @@ def build_recommendation_summary(
     if not confirmed_matches:
         if unconfirmed_matches:
             parts = [
-                "No hay proveedores con coincidencia exacta del producto "
-                "confirmada por la evidencia disponible."
+                (
+                    "No hay proveedores con coincidencia exacta del producto "
+                    "confirmada por la evidencia disponible."
+                )
             ]
         else:
             parts = [
-                "No hay proveedores elegibles para recomendar "
-                "con la evidencia disponible."
+                (
+                    "No hay proveedores elegibles para recomendar "
+                    "con la evidencia disponible."
+                )
             ]
 
         for row in unconfirmed_matches:

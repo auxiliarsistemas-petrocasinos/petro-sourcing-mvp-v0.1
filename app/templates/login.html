@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1"
+  />
+  <meta name="theme-color" content="#f5f8fc" />
+  <title>Iniciar sesión | Abastecimiento AI</title>
+
+  <link
+    rel="preconnect"
+    href="https://fonts.googleapis.com"
+  />
+  <link
+    rel="preconnect"
+    href="https://fonts.gstatic.com"
+    crossorigin
+  />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap"
+    rel="stylesheet"
+  />
+  <link
+    rel="stylesheet"
+    href="/static/styles.css?v=5"
+  />
+</head>
+
+<body class="login-page">
+  <main class="login-shell">
+    <section
+      class="login-card"
+      aria-labelledby="loginTitle"
+    >
+      <div class="login-brand">
+        <span
+          class="brand-mark login-brand-mark"
+          aria-hidden="true"
+        >
+          <img
+            src="/static/petrocasinos-isotipo.png"
+            alt=""
+            width="60"
+            height="60"
+          />
+        </span>
+
+        <div>
+          <strong>Abastecimiento AI</strong>
+          <span>
+            Inteligencia para mejores compras
+          </span>
+        </div>
+      </div>
+
+      <div class="login-heading">
+        <span class="platform-eyebrow">
+          Acceso seguro
+        </span>
+
+        <h1 id="loginTitle">
+          Iniciar sesión
+        </h1>
+
+        <p>
+          Ingresa con tu cuenta asignada para
+          acceder a tus investigaciones.
+        </p>
+      </div>
+
+      <form
+        id="loginForm"
+        class="login-form"
+        method="post"
+        action="/api/auth/login"
+        novalidate
+      >
+        <div class="login-field">
+          <label for="username">
+            Usuario
+          </label>
+
+          <div class="login-input-wrap">
+            <i
+              data-lucide="user"
+              aria-hidden="true"
+            ></i>
+
+            <input
+              id="username"
+              name="username"
+              type="text"
+              autocomplete="username"
+              autocapitalize="none"
+              spellcheck="false"
+              required
+              maxlength="64"
+              placeholder="nombre.apellido"
+            />
+          </div>
+        </div>
+
+        <div class="login-field">
+          <label for="password">
+            Contraseña
+          </label>
+
+          <div class="login-input-wrap">
+            <i
+              data-lucide="lock-keyhole"
+              aria-hidden="true"
+            ></i>
+
+            <input
+              id="password"
+              name="password"
+              type="password"
+              autocomplete="current-password"
+              required
+              maxlength="128"
+              placeholder="Tu contraseña"
+            />
+          </div>
+        </div>
+
+        <p
+          id="loginError"
+          class="login-error hidden"
+          role="alert"
+        ></p>
+
+        <button
+          id="loginButton"
+          class="primary-button login-button"
+          type="submit"
+        >
+          <i
+            data-lucide="log-in"
+            aria-hidden="true"
+          ></i>
+          <span>Iniciar sesión</span>
+        </button>
+      </form>
+
+      <div class="login-security-note">
+        <i
+          data-lucide="shield-check"
+          aria-hidden="true"
+        ></i>
+
+        <span>
+          Tus investigaciones son privadas y
+          están asociadas a tu cuenta.
+        </span>
+      </div>
+    </section>
+  </main>
+
+  <script
+    src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.js"
+    defer
+  ></script>
+  <script
+    src="/static/login.js?v=1"
+    defer
+  ></script>
+</body>
+</html>

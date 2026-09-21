@@ -4,13 +4,14 @@ import logging
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Annotated
 
 from dotenv import load_dotenv
 
 load_dotenv()
 
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from google.genai import errors as genai_errors
@@ -19,6 +20,16 @@ from pydantic import BaseModel
 from tavily.errors import ForbiddenError, InvalidAPIKeyError, UsageLimitExceededError
 from tavily.errors import TimeoutError as TavilyTimeoutError
 
+from .auth import (
+    authenticate_user,
+    clear_session_cookie,
+    create_user_session,
+    get_authenticated_user,
+    public_user,
+    require_user,
+    revoke_request_session,
+    set_session_cookie,
+)
 from .db import (
     get_research,
     init_db,
@@ -57,6 +68,11 @@ app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
 
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
 class ResearchRequest(BaseModel):
     query: str
 
@@ -65,12 +81,39 @@ class PriceReviewRequest(BaseModel):
     status: str
 
 
+@app.get("/login", response_class=HTMLResponse)
+def login_page(request: Request):
+    user = get_authenticated_user(request)
+
+    if user:
+        return RedirectResponse(
+            url="/",
+            status_code=302,
+        )
+
+    return templates.TemplateResponse(
+        request=request,
+        name="login.html",
+        context={},
+    )
+
+
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
+    user = get_authenticated_user(request)
+
+    if not user:
+        return RedirectResponse(
+            url="/login",
+            status_code=302,
+        )
+
     return templates.TemplateResponse(
         request=request,
         name="index.html",
-        context={},
+        context={
+            "user": public_user(user),
+        },
     )
 
 
@@ -79,8 +122,61 @@ def health():
     return {"ok": True}
 
 
+@app.post("/api/auth/login")
+def login(payload: LoginRequest):
+    user = authenticate_user(
+        payload.username,
+        payload.password,
+    )
+
+    if not user:
+        raise HTTPException(
+            status_code=401,
+            detail="Usuario o contraseña incorrectos.",
+        )
+
+    token, max_age = create_user_session(
+        user["id"]
+    )
+
+    response = JSONResponse(
+        {
+            "user": public_user(user),
+        }
+    )
+    set_session_cookie(
+        response,
+        token,
+        max_age,
+    )
+
+    return response
+
+
+@app.post("/api/auth/logout")
+def logout(request: Request):
+    revoke_request_session(request)
+
+    response = JSONResponse(
+        {"ok": True}
+    )
+    clear_session_cookie(response)
+
+    return response
+
+
+@app.get("/api/auth/me")
+def auth_me(
+    user: Annotated[dict, Depends(require_user)],
+):
+    return public_user(user)
+
+
 @app.post("/api/research")
-def run_research(payload: ResearchRequest):
+def run_research(
+    payload: ResearchRequest,
+    user: Annotated[dict, Depends(require_user)],
+):
     query = payload.query.strip()
     if len(query) < 10:
         raise HTTPException(status_code=400, detail="Describe mejor la necesidad de compra.")
@@ -104,8 +200,15 @@ def run_research(payload: ResearchRequest):
             "global_sources": global_sources,
             "raw_report": raw_report,
         }
-        research_id = save_research(query, body)
-        return {"research_id": research_id, **body}
+        research_id = save_research(
+            query,
+            body,
+            user["id"],
+        )
+        return {
+            "research_id": research_id,
+            **body,
+        }
     except InvalidPurchaseRequestError as exc:
         raise HTTPException(
             status_code=400,
@@ -230,6 +333,7 @@ def update_supplier_price_review(
     research_id: int,
     supplier_name: str,
     payload: PriceReviewRequest,
+    user: Annotated[dict, Depends(require_user)],
 ):
     if payload.status not in {
         "validated",
@@ -240,7 +344,10 @@ def update_supplier_price_review(
             detail="Estado de revisión de precio no soportado.",
         )
 
-    item = get_research(research_id)
+    item = get_research(
+        research_id,
+        user["id"],
+    )
     if not item:
         raise HTTPException(
             status_code=404,
@@ -336,6 +443,7 @@ def update_supplier_price_review(
     if not update_research(
         research_id,
         updated_body,
+        user["id"],
     ):
         raise HTTPException(
             status_code=404,
@@ -349,13 +457,23 @@ def update_supplier_price_review(
 
 
 @app.get("/api/history")
-def history():
-    return list_research()
+def history(
+    user: Annotated[dict, Depends(require_user)],
+):
+    return list_research(
+        user["id"]
+    )
 
 
 @app.get("/api/history/{research_id}")
-def history_item(research_id: int):
-    item = get_research(research_id)
+def history_item(
+    research_id: int,
+    user: Annotated[dict, Depends(require_user)],
+):
+    item = get_research(
+        research_id,
+        user["id"],
+    )
     if not item:
         raise HTTPException(status_code=404, detail="Investigación no encontrada.")
     return item

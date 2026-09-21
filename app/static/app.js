@@ -32,6 +32,17 @@ function renderIcons() {
   }
 }
 
+async function apiFetch(url, options = {}) {
+  const response = await fetch(url, options);
+
+  if (response.status === 401) {
+    window.location.replace("/login");
+    throw new Error("La sesión expiró.");
+  }
+
+  return response;
+}
+
 function humanStatus(value) {
   const labels = {
     confirmado: "Confirmado",
@@ -565,7 +576,7 @@ async function updatePriceReview(button) {
   button.disabled = true;
 
   try {
-    const response = await fetch(
+    const response = await apiFetch(
       `/api/research/${encodeURIComponent(researchId)}/suppliers/${encodeURIComponent(supplierName)}/price-review`,
       {
         method: "PATCH",
@@ -613,7 +624,7 @@ async function research() {
   setLoading(true);
 
   try {
-    const response = await fetch("/api/research", {
+    const response = await apiFetch("/api/research", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ query }),
@@ -631,7 +642,7 @@ async function research() {
 
 async function loadHistory() {
   try {
-    const response = await fetch("/api/history");
+    const response = await apiFetch("/api/history");
     if (!response.ok) throw new Error("No se pudo cargar el historial.");
     const rows = await response.json();
     q("#history").innerHTML = rows.length
@@ -653,7 +664,7 @@ async function loadHistory() {
 
     document.querySelectorAll(".history-item").forEach((element) => {
       element.addEventListener("click", async () => {
-        const response = await fetch(`/api/history/${element.dataset.id}`);
+        const response = await apiFetch(`/api/history/${element.dataset.id}`);
         if (!response.ok) return;
         const item = await response.json();
         queryEl.value = item.query;
@@ -690,6 +701,20 @@ results.addEventListener("click", (event) => {
   if (!button) return;
 
   updatePriceReview(button);
+});
+
+const logoutBtn = q("#logoutBtn");
+
+logoutBtn.addEventListener("click", async () => {
+  logoutBtn.disabled = true;
+
+  try {
+    await fetch("/api/auth/logout", {
+      method: "POST",
+    });
+  } finally {
+    window.location.replace("/login");
+  }
 });
 
 researchBtn.addEventListener("click", research);

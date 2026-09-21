@@ -1,8 +1,31 @@
+import pytest
 from fastapi.testclient import TestClient
 
+from app.auth import require_user
 from app.main import app
 
 client = TestClient(app)
+
+TEST_USER = {
+    "id": 1,
+    "username": "test.user",
+    "display_name": "Usuario Prueba",
+    "role": "user",
+}
+
+
+@pytest.fixture(autouse=True)
+def authenticated_user():
+    app.dependency_overrides[
+        require_user
+    ] = lambda: TEST_USER
+
+    yield
+
+    app.dependency_overrides.pop(
+        require_user,
+        None,
+    )
 
 
 def test_health():
@@ -122,7 +145,7 @@ def test_research_replaces_llm_summary_before_response_and_persistence(
 
     persisted = {}
 
-    def fake_save_research(query, body):
+    def fake_save_research(query, body, user_id):
         persisted["query"] = query
         persisted["body"] = body
         return 123
@@ -477,12 +500,12 @@ def test_validating_reviewed_price_persists_and_recalculates_ranking(
 
     persisted = {}
 
-    def fake_get_research(research_id):
+    def fake_get_research(research_id, user_id):
         if research_id != 77:
             return None
         return stored_item
 
-    def fake_update_research(research_id, payload):
+    def fake_update_research(research_id, payload, user_id):
         persisted["research_id"] = research_id
         persisted["payload"] = payload
         stored_item["result"] = payload
@@ -592,8 +615,10 @@ def test_price_validation_rejects_price_not_pending_review(
     monkeypatch.setattr(
         main,
         "get_research",
-        lambda research_id: (
-            stored_item if research_id == 88 else None
+        lambda research_id, user_id: (
+            stored_item
+            if research_id == 88 and user_id == TEST_USER["id"]
+            else None
         ),
     )
 
@@ -678,12 +703,12 @@ def test_price_review_validation_records_and_preserves_timestamp(
         },
     }
 
-    def fake_get_research(research_id):
+    def fake_get_research(research_id, user_id):
         if research_id != 91:
             return None
         return stored_item
 
-    def fake_update_research(research_id, payload):
+    def fake_update_research(research_id, payload, user_id):
         assert research_id == 91
         stored_item["result"] = payload
         return True
@@ -836,12 +861,12 @@ def test_reopening_validated_price_clears_validation_and_recalculates(
         },
     }
 
-    def fake_get_research(research_id):
+    def fake_get_research(research_id, user_id):
         if research_id != 92:
             return None
         return stored_item
 
-    def fake_update_research(research_id, payload):
+    def fake_update_research(research_id, payload, user_id):
         assert research_id == 92
         stored_item["result"] = payload
         return True

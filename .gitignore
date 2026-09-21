@@ -7,3 +7,4 @@ research.db
 .DS_Store
 *.sqlite
 *.sqlite3
+research.db-*
